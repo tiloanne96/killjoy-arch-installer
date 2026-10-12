@@ -8,6 +8,7 @@
 #   --desktop NOMBRE   instalar además un escritorio: bezel, dhruv, docky, lucid (Hyprland) o suzuha (Niri)
 #   --wallpapers       con --desktop dhruv, copiar su colección de wallpapers
 #   --wallpaper-picker instalar un selector de wallpapers (no con dhruv, docky, lucid ni suzuha)
+#   --dev LISTA        entornos y servicios: go, rust, ruby, node, java, python, mobile, docker, redis o all
 #   --laptop           instalar TLP (ahorro de energía) y brightnessctl
 #   -h, --help         mostrar esta ayuda
 #
@@ -36,6 +37,7 @@ LAPTOP=0
 WALLPAPERS=0
 WALLPAPER_PICKER=0
 DESKTOP=
+DEV_LANGS=
 
 PACKAGES=(
   # Base
@@ -78,6 +80,11 @@ parse_args() {
       --laptop) LAPTOP=1 ;;
       --wallpapers) WALLPAPERS=1 ;;
       --wallpaper-picker) WALLPAPER_PICKER=1 ;;
+      --dev)
+        (($# >= 2)) || die "--dev necesita una lista (por ejemplo go,rust o all)"
+        DEV_LANGS=$2
+        shift
+        ;;
       --desktop)
         (($# >= 2)) || die "--desktop necesita un nombre (bezel, dhruv, docky, lucid o suzuha)"
         DESKTOP=$2
@@ -183,6 +190,15 @@ install_desktop() {
   "$REPO_DIR/desktops/$DESKTOP/install.sh" "${args[@]}"
 }
 
+install_dev() {
+  info "Instalando entornos de desarrollo ($DEV_LANGS)..."
+  local args=(--lang "$DEV_LANGS")
+  if ((ASSUME_YES)); then
+    args+=(--yes)
+  fi
+  "$REPO_DIR/components/dev/install.sh" "${args[@]}"
+}
+
 install_wallpaper_picker() {
   info "Instalando el selector de wallpapers..."
   local args=()
@@ -224,6 +240,9 @@ main() {
   fi
   if ((WALLPAPER_PICKER)); then
     install_wallpaper_picker
+  fi
+  if [[ -n $DEV_LANGS ]]; then
+    install_dev
   fi
   link_configs
 

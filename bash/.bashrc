@@ -36,7 +36,9 @@ export VISUAL=nvim
 export MANPAGER='nvim +Man!'
 export SUDO_PROMPT="[sudo] %u: "
 
-for dir in "$HOME/.local/bin" "$HOME/go/bin" "$HOME/.cargo/bin"; do
+# Incluye gems de usuario (Ruby) y platform-tools de Android si existen
+for dir in "$HOME/.local/bin" "$HOME/go/bin" "$HOME/.cargo/bin" \
+  "$HOME"/.local/share/gem/ruby/*/bin "$HOME/Android/Sdk/platform-tools"; do
   if [[ -d $dir && ":$PATH:" != *":$dir:"* ]]; then
     PATH="$dir:$PATH"
   fi

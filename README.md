@@ -18,6 +18,10 @@ licencia, así que no se copió código: todo está escrito de nuevo.
 reescrituras con otra lógica (por ejemplo, `panic-mode` devuelve las ventanas a su
 workspace); no se copió su código ni su instalador.
 
+La idea de ofrecer categorías de software en un menú viene de
+[callmezatiel/zarch](https://github.com/callmezatiel/zarch) (GPL-3.0), un menú de aplicaciones
+para Arch. Aquí es un instalador distinto, escrito de cero: no se copió su código.
+
 El selector de wallpapers opcional usa
 [ujjalsigdel/hyprquickpaper](https://github.com/ujjalsigdel/hyprquickpaper) (MIT),
 descargado del original.
@@ -63,6 +67,8 @@ dotfiles/
 │   ├── wallpaper-picker    # abre el selector de wallpapers
 │   └── wallpaper-restore   # vuelve a poner el último wallpaper al iniciar sesión
 ├── components/
+│   ├── dev/
+│   │   └── install.sh      # entornos de desarrollo: Go, Rust, Ruby, Node, Java, Python, móvil
 │   └── wallpaper-picker/   # selector de wallpapers opcional
 │       └── install.sh      # descarga hyprquickpaper fijado a un commit y lo configura
 ├── desktops/
@@ -179,7 +185,7 @@ cd ~/.dotfiles
 
 Opciones: `-y` (sin confirmaciones de pacman), `--no-packages` (solo enlazar la
 configuración), `--no-omb` (no clonar Oh My Bash), `--desktop bezel|dhruv|docky|lucid|suzuha` (ver
-más abajo), `--wallpapers` (solo con `--desktop dhruv`), `--wallpaper-picker`
+más abajo), `--dev LISTA` (entornos de desarrollo, ver «Entornos de desarrollo»), `--dev LISTA` (entornos de desarrollo, ver más abajo), `--wallpapers` (solo con `--desktop dhruv`), `--wallpaper-picker`
 (ver más abajo) y `--laptop` (instala y activa TLP para ahorrar batería).
 
 Los archivos que ya existan (`~/.bashrc`, `~/.config/nvim`, `~/.config/alacritty`,
@@ -266,12 +272,49 @@ Servidores LSP: `lua_ls` y `taplo` siempre. Si tienes `npm`, también `bashls`,
 `emmet_language_server`. Con `go` se añade `gopls`; con `cargo`, `rust_analyzer`;
 y con `gem`, `ruby_lsp`. Los servidores de Go, Rust y Ruby se instalan solos en el
 siguiente arranque cuando existe el toolchain, así que puedes instalar esos
-lenguajes con `mise` o `rustup` después. Java (`jdtls`) no está incluido; añádelo
+lenguajes con `--dev` (o con `mise`/`rustup` después). Java (`jdtls`) no está incluido; añádelo
 en `lua/plugins/lsp.lua` si lo necesitas.
 
 Ortografía en inglés y español: se activa sola en markdown, texto y mensajes de
 commit, y se alterna con `<leader>us`. La primera vez Neovim ofrece descargar el
 diccionario de español.
+
+## Entornos de desarrollo y servicios
+
+`./install.sh --dev go,rust,ruby,node,java,python,mobile,docker,redis` (o `--dev all`) instala el
+toolchain de cada lenguaje, más Docker y Redis, con `components/dev/install.sh`. En `arch-install.sh` es
+una pregunta del menú (varios números separados por coma, `a` para todos, Enter para
+ninguno) o `--dev LISTA` / `--dev none`; se instala en el primer inicio de sesión
+junto con lo demás. `components/dev/install.sh --list` muestra qué trae cada uno.
+
+| Lenguaje | Paquetes | Después de instalar |
+|---|---|---|
+| go | `go` | `~/go/bin` ya está en el PATH |
+| rust | `rustup` | instala el toolchain estable y `rust-analyzer`, `rust-src` |
+| ruby | `ruby`, `ruby-bundler`, `libyaml` | gems de usuario en el PATH (`gem install --user-install`) |
+| node | `nodejs`, `npm`, `pnpm` | `npm install -g` va a `~/.local`, sin sudo |
+| java | `jdk21-openjdk`, `maven`, `gradle` | JDK 21 como Java por defecto (`archlinux-java`) |
+| python | `python`, `python-pip`, `python-pipx`, `uv` | `pipx ensurepath` |
+| mobile | `android-tools`, `scrcpy`, `kotlin`, `jdk17-openjdk` + AUR: `android-studio`, `flutter` | `platform-tools` en el PATH cuando exista `~/Android/Sdk` |
+| docker | `docker`, `docker-compose`, `docker-buildx` | activa el servicio y te añade al grupo `docker` |
+| redis | `redis` (o `valkey` si `redis` no está en los repos) | activa el servicio (`redis.service` o `valkey.service`) |
+
+**Docker**: pertenecer al grupo `docker` equivale a tener root en la máquina (se puede montar `/` en un
+contenedor). Es lo habitual en un equipo de desarrollo personal, pero si no lo quieres:
+`sudo gpasswd -d $USER docker` y usa `sudo docker`. Hay que cerrar sesión y volver a entrar para que el
+grupo surta efecto. **Redis**: escucha solo en localhost con la configuración por defecto de Arch (no lo he
+comprobado en un sistema real). Los dos servicios quedan activos al arrancar; para que no arranquen solos:
+`sudo systemctl disable --now docker redis`.
+
+Siempre se añade `mise` (ya activado en `.bashrc`) para fijar versiones por proyecto
+(`mise use go@1.23`). Neovim instala solos los servidores de Go, Rust y Ruby en el
+siguiente arranque, porque detecta el toolchain.
+
+Lo que no está en los repositorios oficiales (Android Studio y Flutter) sale del AUR
+con `yay` o `paru`. Si no hay ninguno, el script ofrece instalar `yay-bin`, y con `-y`
+lo hace sin preguntar. En el AUR cualquiera puede publicar, así que antes de aceptar
+revisa el PKGBUILD que muestra `makepkg`. Un paquete que no exista se avisa en vez de
+abortar, y al final el script dice cuáles faltaron.
 
 ## Atajos de Neovim
 
@@ -589,6 +632,14 @@ pruebas (el kernel no los trae), por lo que el camino btrfs, los subvolúmenes y
 `nvidia-open-dkms`…), las opciones de `tuigreet` y que `os-prober` encuentre Windows
 desde el chroot sin pasos extra tampoco están comprobados. Pruébalo primero en una
 máquina virtual UEFI.
+
+`components/dev/install.sh` se ejecutó con `pacman`, `sudo`, `yay`, `rustup`, `npm`,
+`archlinux-java`, `pipx`, `systemctl` y `usermod` simulados (con y sin ayudante del AUR, con un paquete
+inexistente y con todos los lenguajes). Los nombres de paquete no se comprobaron
+contra los repositorios reales (`pnpm`, `uv`, `scrcpy`, `kotlin`, `jdk17-openjdk`,
+`android-studio`, `flutter`, `docker-buildx`, `redis`…), ni que Docker o Redis arranquen de verdad, ni que `yay-bin` compile, ni que Android Studio y
+Flutter funcionen juntos con esos JDK. Las líneas de `rustup`, `npm config` y
+`archlinux-java` suponen la salida de esos comandos según su documentación.
 
 Lucid: el módulo se probó con `pacman`, `sudo` y el instalador de Lucid simulados
 (los parches se aplican, los conflictos de opciones fallan y el reinstalado es

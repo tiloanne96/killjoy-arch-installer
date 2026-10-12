@@ -13,6 +13,8 @@
 #                          espacio libre y no toca las particiones existentes
 #   --fs btrfs|ext4        sistema de archivos de la raíz
 #   --desktop NOMBRE       none, bezel, dhruv, docky, lucid o suzuha
+#   --dev LISTA            entornos y servicios: go, rust, ruby, node, java, python,
+#                          mobile, docker, redis, all o none (por ejemplo go,ruby,docker)
 #   --hostname NOMBRE      nombre del equipo
 #   --user NOMBRE          usuario con sudo (si no, se pregunta)
 #   --password-file FILE   primera línea = contraseña del usuario (si no, se pide)
@@ -53,6 +55,9 @@ USERNAME=
 PASSWORD_FILE=
 DESKTOP_NAME=
 ROOT_MODE=
+DEV_LANGS=
+DEV_FLAG=0
+DEV_NAMES=(go rust ruby node java python mobile docker redis)
 ROOT_PASSWORD_FILE=
 ROOT_PASSWORD=
 MODE_FLAG=0
@@ -76,7 +81,7 @@ usage() {
 parse_args() {
   while (($# > 0)); do
     case $1 in
-      --disk | --mode | --fs | --desktop | --hostname | --user | --password-file | --root | --root-password-file | --kernel | --keymap | --timezone | --confirm-disk)
+      --disk | --mode | --fs | --desktop | --hostname | --user | --password-file | --root | --root-password-file | --dev | --kernel | --keymap | --timezone | --confirm-disk)
         (($# >= 2)) || die "$1 necesita un valor"
         case $1 in
           --disk) DISK=$2 ;;
@@ -90,6 +95,11 @@ parse_args() {
           --user) USERNAME=$2 ;;
           --password-file) PASSWORD_FILE=$2 ;;
           --root) ROOT_MODE=$2 ;;
+          --dev)
+            DEV_LANGS=$2
+            DEV_FLAG=1
+            [[ $DEV_LANGS != none ]] || DEV_LANGS=
+            ;;
           --root-password-file) ROOT_PASSWORD_FILE=$2 ;;
           --kernel) KERNEL=$2 ;;
           --keymap) KEYMAP=$2 ;;
@@ -206,6 +216,32 @@ choose_desktop() {
   DESKTOP_NAME=${opts[n - 1]}
 }
 
+choose_dev() {
+  if ((DEV_FLAG)); then return 0; fi
+  local labels=("Go" "Rust" "Ruby" "Node.js" "Java" "Python" "Móvil (Android Studio, Flutter, Kotlin)" "Docker + Compose" "Redis")
+  local i reply='' tok
+  heading "Entornos de desarrollo y servicios"
+  for i in "${!labels[@]}"; do
+    item "$((i + 1))" "${labels[i]}"
+  done
+  echo "${C_DIM}  Varios separados por coma (1,3,4), a = todos, Enter = ninguno${C_RESET}"
+  read -r -p "${PROMPT}Entornos [ninguno]: " reply || reply=
+  reply=${reply// /,}
+  [[ -n $reply ]] || return 0
+  if [[ $reply == a || $reply == all ]]; then
+    DEV_LANGS=all
+    return 0
+  fi
+  local -a picked=()
+  IFS=',' read -r -a toks <<<"$reply"
+  for tok in "${toks[@]}"; do
+    [[ -n $tok ]] || continue
+    if ! [[ $tok =~ ^[0-9]+$ ]] || ((tok < 1 || tok > ${#DEV_NAMES[@]})); then die "Elección no válida: $tok"; fi
+    picked+=("${DEV_NAMES[tok - 1]}")
+  done
+  DEV_LANGS=$(IFS=,; echo "${picked[*]}")
+}
+
 choose_root() {
   [[ -z $ROOT_MODE ]] || return 0
   local n=
@@ -255,6 +291,13 @@ validate_choices() {
   [[ $DESKTOP_NAME == none || -x $REPO_DIR/desktops/$DESKTOP_NAME/install.sh ]] ||
     die "Escritorio desconocido: $DESKTOP_NAME"
   [[ -e /usr/share/zoneinfo/$TIMEZONE ]] || die "Zona horaria desconocida: $TIMEZONE"
+  if [[ -n $DEV_LANGS && $DEV_LANGS != all ]]; then
+    local d
+    IFS=',' read -r -a _devs <<<"$DEV_LANGS"
+    for d in "${_devs[@]}"; do
+      [[ " ${DEV_NAMES[*]} " == *" $d "* ]] || die "Entorno desconocido: $d (${DEV_NAMES[*]}, all o none)"
+    done
+  fi
   case $ROOT_MODE in lock | password) ;; *) die "--root debe ser lock o password (no $ROOT_MODE)" ;; esac
   [[ $USERNAME =~ $USER_RE ]] || die "Nombre de usuario no válido: $USERNAME (minúsculas, números, - y _)"
   [[ $NEW_HOSTNAME =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] || die "Nombre de equipo no válido: $NEW_HOSTNAME"
@@ -460,6 +503,7 @@ copy_dotfiles() {
 pending_args() {
   local args=(--yes)
   [[ $DESKTOP_NAME == none ]] || args+=(--desktop "$DESKTOP_NAME")
+  [[ -z $DEV_LANGS ]] || args+=(--dev "$DEV_LANGS")
   ((LAPTOP)) && args+=(--laptop)
   echo "${args[*]}"
 }
@@ -497,6 +541,7 @@ summary() {
   printf '  %s%s%s %s\n' "$C_DIM" "Root         " "$C_RESET" "$root_txt"
   printf '  %s%s%s %s  ·  Idioma: %s\n' "$C_DIM" "Zona horaria " "$C_RESET" "$TIMEZONE" "$LOCALE"
   printf '  %s%s%s %s\n' "$C_DIM" "Escritorio   " "$C_RESET" "$DESKTOP_NAME"
+  printf '  %s%s%s %s\n' "$C_DIM" "Desarrollo   " "$C_RESET" "${DEV_LANGS:-ninguno}"
   if [[ $INSTALL_MODE == whole ]]; then
     printf '\n%sSe BORRARÁ TODO el contenido de %s:%s\n' "$C_ERR" "$DISK" "$C_RESET"
     lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT "$DISK"
@@ -586,6 +631,7 @@ main() {
   choose_disk
   choose_mode
   choose_desktop
+  choose_dev
   choose_root
   validate_choices
   summary
