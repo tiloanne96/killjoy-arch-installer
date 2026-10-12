@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# sysreport — resumen rápido del equipo: temperatura, batería, CPU, memoria,
+# disco y los procesos que más consumen. Pensado para laptops.
+
+set -euo pipefail
+
+if [[ -t 1 ]]; then
+  BOLD=$'\033[1m' CYAN=$'\033[36m' DIM=$'\033[2m' RESET=$'\033[0m'
+else
+  BOLD="" CYAN="" DIM="" RESET=""
+fi
+
+section() { printf '\n%s%s%s\n' "$BOLD$CYAN" "$1" "$RESET"; }
+
+temperature() {
+  section "Temperatura"
+  if command -v sensors >/dev/null 2>&1; then
+    sensors 2>/dev/null | grep -E '^(Core|Package|Tctl|Tdie|temp1)' || echo "Sin sensores (prueba: sudo sensors-detect)"
+    return
+  fi
+  local zone found=0
+  for zone in /sys/class/thermal/thermal_zone*; do
+    [[ -r $zone/temp ]] || continue
+    printf '%s: %s °C\n' "$(cat "$zone/type" 2>/dev/null || echo zona)" "$(($(cat "$zone/temp") / 1000))"
+    found=1
+  done
+  ((found)) || echo "Sin sensores de temperatura"
+}
+
+battery() {
+  section "Batería"
+  local bat
+  bat="$(compgen -G '/sys/class/power_supply/BAT*' | head -n 1 || true)"
+  if [[ -z $bat ]]; then
+    echo "Sin batería (equipo de escritorio)"
+    return
+  fi
+  printf 'Carga:  %s %%\n' "$(cat "$bat/capacity")"
+  printf 'Estado: %s\n' "$(cat "$bat/status")"
+  # La salud es la capacidad actual de fábrica frente a la de diseño
+  if [[ -r $bat/energy_full && -r $bat/energy_full_design ]]; then
+    printf 'Salud:  %s %%\n' "$(($(cat "$bat/energy_full") * 100 / $(cat "$bat/energy_full_design")))"
+  fi
+  if [[ -r $bat/power_now ]] && (($(cat "$bat/power_now") > 0)); then
+    printf 'Consumo: %s W\n' "$(awk -v p="$(cat "$bat/power_now")" 'BEGIN { printf "%.1f", p / 1000000 }')"
+  fi
+}
+
+usage_summary() {
+  section "CPU, memoria y disco"
+  local _ u1 n1 s1 i1 w1 u2 n2 s2 i2 w2 total idle
+  read -r _ u1 n1 s1 i1 w1 _ </proc/stat
+  sleep 1
+  read -r _ u2 n2 s2 i2 w2 _ </proc/stat
+  total=$(((u2 + n2 + s2 + i2 + w2) - (u1 + n1 + s1 + i1 + w1)))
+  idle=$(((i2 + w2) - (i1 + w1)))
+  if ((total > 0)); then
+    printf 'CPU:      %s %%\n' "$((100 * (total - idle) / total))"
+  fi
+  free -h | awk '/^Mem:/ { printf "Memoria:  %s de %s (disponible: %s)\n", $3, $2, $7 }'
+  df -h / | awk 'NR == 2 { printf "Disco /:  %s de %s (%s)\n", $3, $2, $5 }'
+}
+
+top_processes() {
+  section "Procesos que más CPU usan"
+  ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -n 6
+  section "Procesos que más memoria usan"
+  ps -eo pid,comm,%cpu,%mem --sort=-%mem | head -n 6
+}
+
+main() {
+  temperature
+  battery
+  usage_summary
+  top_processes
+  section "Tiempo encendido"
+  uptime -p
+  printf '\n%sGenerado el %s%s\n' "$DIM" "$(date '+%d/%m/%Y %H:%M:%S')" "$RESET"
+}
+
+main "$@"

@@ -1,0 +1,118 @@
+// Configuración mínima de Niri para el escritorio suzuha (desktops/suzuha).
+// Solo se instala si no tienes ~/.config/niri/config.kdl. @BIN@ lo sustituye el
+// instalador por ~/.local/bin, para que no dependa del PATH de la sesión.
+
+input {
+    keyboard {
+        xkb {
+            layout "us"
+        }
+    }
+    touchpad {
+        tap
+    }
+}
+
+layout {
+    gaps 12
+    default-column-width { proportion 0.5; }
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+    focus-ring {
+        width 2
+        active-color "#cba6f7"
+        inactive-color "#45475a"
+    }
+    border { off; }
+}
+
+prefer-no-csd
+hotkey-overlay { skip-at-startup; }
+screenshot-path null
+
+environment {
+    TERMINAL "alacritty"
+}
+
+// El shell de suzuha (amane) se compila con `amane compile` y se inicia aquí
+spawn-at-startup "@BIN@/amane" "run"
+
+// El wallpaper de suzuha también se ve detrás de la vista general
+layer-rule {
+    match namespace="^wallpaper$"
+    place-within-backdrop true
+}
+
+binds {
+    // Aplicaciones
+    Mod+Q { spawn "alacritty"; }
+    Mod+E { spawn "alacritty" "-e" "yazi"; }
+
+    // Ventanas
+    Mod+C { close-window; }
+    Mod+M { quit; }
+    Mod+F { maximize-column; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+Shift+V { toggle-window-floating; }
+    Mod+R { switch-preset-column-width; }
+    Mod+Shift+Slash { show-hotkey-overlay; }
+
+    // Foco y movimiento
+    Mod+Left { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    Mod+Up { focus-window-up; }
+    Mod+Down { focus-window-down; }
+    Mod+Ctrl+Left { move-column-left; }
+    Mod+Ctrl+Right { move-column-right; }
+    Mod+Ctrl+Up { move-window-up; }
+    Mod+Ctrl+Down { move-window-down; }
+
+    // Workspaces 1-9
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+Shift+1 { move-column-to-workspace 1; }
+    Mod+Shift+2 { move-column-to-workspace 2; }
+    Mod+Shift+3 { move-column-to-workspace 3; }
+    Mod+Shift+4 { move-column-to-workspace 4; }
+    Mod+Shift+5 { move-column-to-workspace 5; }
+    Mod+Shift+6 { move-column-to-workspace 6; }
+    Mod+Shift+7 { move-column-to-workspace 7; }
+    Mod+Shift+8 { move-column-to-workspace 8; }
+    Mod+Shift+9 { move-column-to-workspace 9; }
+
+    // El shell (amane ipc call <destino> <acción>)
+    Mod+Space { spawn "@BIN@/amane" "ipc" "call" "launcher" "toggle"; }
+    Mod+Shift+P { spawn "@BIN@/amane" "ipc" "call" "launcher" "showTmux"; }
+    Mod+Shift+W { spawn "@BIN@/amane" "ipc" "call" "wallpaper" "toggle"; }
+    Mod+A { spawn "@BIN@/amane" "ipc" "call" "control" "toggle"; }
+    Mod+N { spawn "@BIN@/amane" "ipc" "call" "utility" "toggle"; }
+    Mod+Shift+S { spawn "@BIN@/amane" "ipc" "call" "settings"; }
+    Mod+L { spawn "@BIN@/amane" "ipc" "call" "lock"; }
+
+    // Capturas y grabación (script capture de este repo)
+    Print { spawn "@BIN@/capture" "full"; }
+    Shift+Print { spawn "@BIN@/capture" "region"; }
+    Ctrl+Print { spawn "@BIN@/capture" "rec-region"; }
+    Ctrl+Shift+Print { spawn "@BIN@/capture" "stop"; }
+
+    // Volumen, brillo y multimedia
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "wpctl" "set-volume" "-l" "1" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86AudioMicMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "set" "5%+"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "set" "5%-"; }
+    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
+    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+}

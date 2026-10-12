@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# capture — capturas y grabaciones de pantalla en Wayland.
+#
+# Uso: capture <full|region|rec-full|rec-region|stop>
+#   full         captura toda la pantalla
+#   region       captura una región que eliges con el ratón
+#   rec-full     graba toda la pantalla
+#   rec-region   graba una región
+#   stop         detiene la grabación en curso
+#
+# Las capturas se copian al portapapeles y se guardan en ~/Pictures/Screenshots;
+# las grabaciones van a ~/Videos/Recordings. Se pueden cambiar con
+# CAPTURE_SHOTS_DIR y CAPTURE_REC_DIR.
+#
+# Necesita: grim, slurp, wf-recorder, wl-clipboard y libnotify.
+# Opcional: wayfreeze (AUR) congela la pantalla mientras eliges la región.
+
+set -euo pipefail
+
+user_dir() { # user_dir <NOMBRE XDG> <carpeta por defecto>
+  local dir=""
+  if command -v xdg-user-dir >/dev/null 2>&1; then
+    dir="$(xdg-user-dir "$1")"
+  fi
+  if [[ -n $dir && $dir != "$HOME" ]]; then
+    printf '%s\n' "$dir"
+  else
+    printf '%s\n' "$HOME/$2"
+  fi
+}
+
+SHOTS_DIR="${CAPTURE_SHOTS_DIR:-$(user_dir PICTURES Pictures)/Screenshots}"
+REC_DIR="${CAPTURE_REC_DIR:-$(user_dir VIDEOS Videos)/Recordings}"
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/capture-recorder"   # línea 1: PID, línea 2: archivo
+
+FREEZE_PID=""
+
+die() {
+  notify "Error" "$*" dialog-error
+  printf 'capture: %s\n' "$*" >&2
+  exit 1
+}
+
+notify() { # notify <título> [mensaje] [icono]
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send -i "${3:-camera-photo}" "$1" "${2:-}" || true
+}
+
+need() {
+  local cmd
+  for cmd in "$@"; do
+    command -v "$cmd" >/dev/null 2>&1 || die "falta $cmd"
+  done
+}
+
+stamp() { date +%Y-%m-%d_%H-%M-%S; }
+
+start_freeze() {
+  command -v wayfreeze >/dev/null 2>&1 || return 0
+  wayfreeze >/dev/null 2>&1 &
+  FREEZE_PID=$!
+  sleep 0.15
+}
+
+stop_freeze() {
+  if [[ -n $FREEZE_PID ]]; then
+    kill "$FREEZE_PID" 2>/dev/null || true
+    FREEZE_PID=""
+  fi
+}
+trap stop_freeze EXIT
+
+# Imprime la geometría elegida; devuelve 1 si se cancela la selección
+select_region() {
+  local geometry
+  start_freeze
+  geometry="$(slurp)" || return 1
+  printf '%s\n' "$geometry"
+}
+
+recording_pid() {
+  local pid
+  [[ -f $STATE_FILE ]] || return 1
+  pid="$(sed -n 1p "$STATE_FILE")"
+  [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s\n' "$pid"
+}
+
+shot() { # shot [geometría]
+  local file
+  need grim
+  mkdir -p "$SHOTS_DIR"
+  file="$SHOTS_DIR/screenshot_$(stamp).png"
+  if [[ -n ${1:-} ]]; then
+    grim -g "$1" "$file"
+  else
+    grim "$file"
+  fi
+  if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy <"$file"
+  fi
+  notify "Captura guardada" "$file"
+}
+
+record() { # record [geometría]
+  local file pid
+  need wf-recorder
+  if recording_pid >/dev/null; then
+    die "ya hay una grabación en curso (usa: capture stop)"
+  fi
+  mkdir -p "$REC_DIR"
+  file="$REC_DIR/recording_$(stamp).mp4"
+  if [[ -n ${1:-} ]]; then
+    wf-recorder -g "$1" -f "$file" >/dev/null 2>&1 &
+  else
+    wf-recorder -f "$file" >/dev/null 2>&1 &
+  fi
+  pid=$!
+  disown "$pid"
+  printf '%s\n%s\n' "$pid" "$file" >"$STATE_FILE"
+  notify "Grabación iniciada" "$file" media-record
+}
+
+stop_recording() {
+  local pid file
+  if ! pid="$(recording_pid)"; then
+    rm -f "$STATE_FILE"
+    notify "No hay ninguna grabación en curso" "" dialog-information
+    return 0
+  fi
+  file="$(sed -n 2p "$STATE_FILE")"
+  kill -INT "$pid"
+  # wf-recorder cierra el archivo al recibir SIGINT; esperamos hasta 6 s
+  for _ in $(seq 1 30); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.2
+  done
+  rm -f "$STATE_FILE"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+    notify "La grabación no cerró a tiempo" "Se forzó el cierre; revisa $file" dialog-warning
+    return 0
+  fi
+  notify "Grabación terminada" "$file" media-playback-stop
+}
+
+usage() {
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"
+}
+
+main() {
+  local geometry
+  case "${1:-}" in
+    full) shot ;;
+    region)
+      need slurp
+      geometry="$(select_region)" || exit 0
+      shot "$geometry"
+      ;;
+    rec-full) record ;;
+    rec-region)
+      need slurp
+      geometry="$(select_region)" || exit 0
+      stop_freeze # el recorder grabaría el overlay congelado
+      record "$geometry"
+      ;;
+    stop) stop_recording ;;
+    -h | --help | help) usage ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

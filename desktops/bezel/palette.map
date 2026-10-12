@@ -1,0 +1,92 @@
+# Mapa de colores: paleta de bezel (azul noche + lavanda) → Catppuccin Mocha.
+# Lo lee recolor.pl. Formatos de línea:
+#
+#   hex  <desde> <hasta>      6 dígitos hexadecimales sin '#'. Se reemplazan dentro de
+#                             #rrggbb, #aarrggbb, #rrggbbaa, rgb(rrggbb) y rgba(rrggbbaa),
+#                             conservando el canal alfa.
+#   text <desde> => <hasta>   texto literal, para los rgba() en decimal.
+#
+# Todo se reemplaza en una sola pasada: un destino nunca se vuelve a mapear.
+# Un color que no esté aquí se queda como está (negros, blancos y grises neutros).
+
+# ── Superficies (de más oscura a más clara) ──────────────────────────────────
+hex 05080f 11111b   # fondo oscurecido detrás de los paneles
+hex 0a0f1c 11111b   # crust: lo más oscuro
+hex 0f0f14 181825
+hex 0b1120 181825
+hex 0d1424 181825
+hex 0f1628 181825   # mantle: marco, barra y paneles
+hex 151923 181825
+hex 171b26 181825
+hex 18223a 1e1e2e   # base: tarjetas dentro de los paneles
+hex 1e2430 1e1e2e
+hex 222218 1e1e2e
+hex 202c48 313244   # surface0: hover y bordes inactivos
+hex 283043 313244
+hex 31363b 313244
+hex 2a3756 45475a   # surface1: pistas, bordes y filas seleccionadas
+hex 3a4560 45475a
+hex 3f3a36 45475a
+hex 34436a 585b70   # surface2
+hex 4a5064 585b70
+hex 4a5675 6c7086   # overlay0: texto atenuado
+hex 29244d 3c344f   # contenedor tonal del acento (mauve al 20% sobre mantle)
+hex 160f33 11111b   # texto sobre el acento
+
+# ── Texto ────────────────────────────────────────────────────────────────────
+hex f4f2ec cdd6f4   # text
+hex c4c7d1 bac2de   # subtext1
+hex cdd0d9 bac2de
+hex b8b4d0 bac2de
+hex 9aa8c6 a6adc8   # subtext0
+hex 8b91a3 7f849c   # overlay1
+hex 7c8190 7f849c
+
+# ── Acentos ──────────────────────────────────────────────────────────────────
+hex a99cf0 cba6f7   # acento principal: lavanda → mauve
+hex d2cbfb cba6f7
+hex c39ff0 cba6f7
+hex d2a6ff cba6f7
+hex dfbfff cba6f7
+hex 8b7de0 b4befe   # lavender
+hex f0d9b5 f5e0dc   # segundo tono: arena → rosewater
+hex c9bea6 f5e0dc
+hex b9b29a f5e0dc
+
+# ── Colores semánticos ───────────────────────────────────────────────────────
+hex ff5a5f f38ba8   # error: red
+hex ff8a8d f38ba8
+hex d95757 f38ba8
+hex c96b72 eba0ac   # maroon
+hex c98589 eba0ac
+hex d0736f eba0ac
+hex e08f96 eba0ac
+hex ffb46b fab387   # aviso: peach
+hex d9824f fab387
+hex 9bd48a a6e3a1   # éxito: green
+hex b8e6a6 a6e3a1
+hex 7fbf6e a6e3a1
+hex e8c872 f9e2af   # yellow
+hex f2d898 f9e2af
+hex c9a95a f9e2af
+hex 7aa7ff 89b4fa   # blue
+hex 9cbcff 89b4fa
+hex 6f86b6 89b4fa
+hex 8fd0e0 89dceb   # sky
+hex a9c9e6 89dceb
+hex 7fd3c8 94e2d5   # teal
+hex 7fc9bd 94e2d5
+hex 74b8b0 94e2d5
+
+# Fondos de diff del tema de yazi (rojo y verde tenues sobre base)
+hex 432a30 3e2e40
+hex 2a3330 323c3f
+
+# ── rgba() en decimal ────────────────────────────────────────────────────────
+text Qt.rgba(15 / 255, 22 / 255, 40 / 255,  => Qt.rgba(24 / 255, 24 / 255, 37 / 255,
+text Qt.rgba(42 / 255, 55 / 255, 86 / 255,  => Qt.rgba(49 / 255, 50 / 255, 68 / 255,
+text Qt.rgba(10 / 255, 13 / 255, 20 / 255,  => Qt.rgba(17 / 255, 17 / 255, 27 / 255,
+text Qt.rgba(27 / 255, 32 / 255, 43 / 255,  => Qt.rgba(30 / 255, 30 / 255, 46 / 255,
+text Qt.rgba(5 / 255, 8 / 255, 10 / 255,    => Qt.rgba(11 / 255, 11 / 255, 17 / 255,
+text rgba(111,134,182,0.45)                 => rgba(137,180,250,0.45)
+text rgba(169,156,240,0.35)                 => rgba(203,166,247,0.35)

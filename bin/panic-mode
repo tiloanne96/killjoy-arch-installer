@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# panic-mode — "tecla de jefe" para Hyprland.
+# Primera pulsación: esconde todas las ventanas en un workspace especial, pausa
+# la música o el video, silencia salida y micrófono y activa No molestar.
+# Segunda pulsación: devuelve cada ventana a su workspace y restaura el sonido
+# tal como estaba (si ya lo tenías en silencio, lo deja en silencio). No bloquea
+# la sesión y no reanuda la reproducción.
+#
+# Ejemplo de atajo en Hyprland:  SUPER + Escape -> exec panic-mode
+
+set -uo pipefail
+
+for cmd in hyprctl jq; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "panic-mode: falta $cmd" >&2
+    exit 1
+  }
+done
+
+STATE="${XDG_RUNTIME_DIR:-/tmp}/panic-mode-$UID.json"
+HIDDEN="special:panic"
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send -a panic-mode -i security-high "$1" "${2:-}" 2>/dev/null || true
+}
+
+# Ejecuta varios dispatchers en una sola llamada; devuelve error si alguno falla
+dispatch_all() {
+  local out line batch=""
+  for line in "$@"; do batch+="dispatch $line; "; done
+  [[ -n $batch ]] || return 0
+  out="$(hyprctl --batch "$batch" 2>&1)" || return 1
+  ! grep -qv '^ok$' <<<"$out"
+}
+
+# "1" si la salida/entrada de audio está en silencio, "0" si no
+is_muted() {
+  if wpctl get-volume "$1" 2>/dev/null | grep -q MUTED; then echo 1; else echo 0; fi
+}
+
+set_mute() { # set_mute <destino> <0|1>
+  command -v wpctl >/dev/null 2>&1 && wpctl set-mute "$1" "$2" >/dev/null 2>&1
+  return 0
+}
+
+pause_players() {
+  command -v playerctl >/dev/null 2>&1 || return 0
+  local p
+  while IFS= read -r p; do
+    [[ -n $p ]] && playerctl -p "$p" pause >/dev/null 2>&1
+  done < <(playerctl -l 2>/dev/null)
+  return 0
+}
+
+# Devuelve por stdout el estado previo de No molestar de los demonios presentes
+dnd_on() {
+  local dunst_was=false swaync_was=false
+  if command -v makoctl >/dev/null 2>&1; then
+    makoctl dismiss -a >/dev/null 2>&1
+    makoctl mode -a do-not-disturb >/dev/null 2>&1
+  fi
+  if command -v dunstctl >/dev/null 2>&1; then
+    dunst_was="$(dunstctl is-paused 2>/dev/null || echo false)"
+    dunstctl close-all >/dev/null 2>&1
+    dunstctl set-paused true >/dev/null 2>&1
+  fi
+  if command -v swaync-client >/dev/null 2>&1; then
+    swaync_was="$(swaync-client -D 2>/dev/null || echo false)"
+    swaync-client -C >/dev/null 2>&1
+    swaync-client -dn >/dev/null 2>&1
+  fi
+  jq -n --arg dunst "$dunst_was" --arg swaync "$swaync_was" \
+    '{dunst: ($dunst == "true"), swaync: ($swaync == "true")}'
+}
+
+dnd_off() { # dnd_off <estado guardado en JSON>
+  local state="$1"
+  command -v makoctl >/dev/null 2>&1 && makoctl mode -r do-not-disturb >/dev/null 2>&1
+  if command -v dunstctl >/dev/null 2>&1 && [[ "$(jq -r '.dunst' <<<"$state")" != true ]]; then
+    dunstctl set-paused false >/dev/null 2>&1
+  fi
+  if command -v swaync-client >/dev/null 2>&1 && [[ "$(jq -r '.swaync' <<<"$state")" != true ]]; then
+    swaync-client -df >/dev/null 2>&1
+  fi
+  return 0
+}
+
+activate() {
+  local windows cmds=() addr ws dnd sink_muted src_muted
+  # Solo las ventanas que no están ya en un workspace especial
+  windows="$(hyprctl clients -j | jq -c '[.[]
+      | select(.mapped and (.workspace.name | startswith("special:") | not))
+      | {address, workspace: .workspace.id}]')" || {
+    notify "Modo pánico" "No pude leer las ventanas de Hyprland."
+    exit 1
+  }
+
+  sink_muted="$(is_muted @DEFAULT_AUDIO_SINK@)"
+  src_muted="$(is_muted @DEFAULT_AUDIO_SOURCE@)"
+
+  pause_players
+  set_mute @DEFAULT_AUDIO_SINK@ 1
+  set_mute @DEFAULT_AUDIO_SOURCE@ 1
+  dnd="$(dnd_on)"
+
+  while IFS=$'\t' read -r addr ws; do
+    [[ -n $addr ]] && cmds+=("movetoworkspacesilent $HIDDEN,address:$addr")
+  done < <(jq -r '.[] | [.address, .workspace] | @tsv' <<<"$windows")
+
+  # Se guarda antes de mover, así una segunda pulsación siempre puede deshacerlo
+  jq -n --argjson windows "$windows" --argjson dnd "$dnd" \
+    --argjson sink "$sink_muted" --argjson src "$src_muted" \
+    '{windows: $windows, dnd: $dnd, sink_was_muted: ($sink == 1), source_was_muted: ($src == 1)}' >"$STATE"
+
+  if dispatch_all "${cmds[@]}"; then
+    notify "Modo pánico activado" "Ventanas ocultas, audio y notificaciones en silencio."
+  else
+    notify "Modo pánico" "Alguna ventana no se pudo mover; revisa con hyprctl."
+  fi
+}
+
+deactivate() {
+  local saved cmds=() addr ws
+  saved="$(cat "$STATE")"
+
+  while IFS=$'\t' read -r addr ws; do
+    [[ -n $addr ]] && cmds+=("movetoworkspacesilent $ws,address:$addr")
+  done < <(jq -r '.windows[] | [.address, .workspace] | @tsv' <<<"$saved")
+  # Las ventanas que se hayan cerrado mientras tanto hacen fallar su comando; no importa
+  dispatch_all "${cmds[@]}" || true
+
+  [[ "$(jq -r '.sink_was_muted' <<<"$saved")" == true ]] || set_mute @DEFAULT_AUDIO_SINK@ 0
+  [[ "$(jq -r '.source_was_muted' <<<"$saved")" == true ]] || set_mute @DEFAULT_AUDIO_SOURCE@ 0
+  dnd_off "$(jq -c '.dnd' <<<"$saved")"
+
+  rm -f "$STATE"
+  notify "Modo pánico desactivado" "Ventanas de vuelta en sus workspaces."
+}
+
+case "${1:-}" in
+  -h | --help)
+    sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    ;;
+  "")
+    if [[ -f $STATE ]]; then deactivate; else activate; fi
+    ;;
+  *)
+    echo "uso: panic-mode [-h]" >&2
+    exit 1
+    ;;
+esac

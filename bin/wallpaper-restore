@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# wallpaper-restore — vuelve a poner el último wallpaper elegido con
+# wallpaper-picker. Ponlo en el arranque de tu compositor: swaybg no recuerda el
+# fondo al reiniciar la sesión.
+
+set -euo pipefail
+
+HQP_DIR="${HQP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/dotfiles/hyprquickpaper}"
+STATE="$HOME/.cache/hyprquickpaper/current_wallpaper"
+
+[[ -f $HQP_DIR/commands.sh ]] || exit 0
+[[ -s $STATE ]] || exit 0
+
+wallpaper="$(head -n 1 "$STATE")"
+[[ -f $wallpaper ]] || exit 0
+
+# commands.sh aplica imágenes con el demonio configurado y videos con mpvpaper
+exec bash "$HQP_DIR/commands.sh" "$wallpaper"

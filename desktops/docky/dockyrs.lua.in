@@ -1,0 +1,33 @@
+-- Generado por desktops/docky/install.sh. Atajos y arranque de Docky.rs.
+-- Basado en el drop-in de su instalador original (MIT).
+local mainMod = _G.mainMod or "SUPER"
+local dockyrs = "@DIR@/target/release/dockyrs"
+
+hl.on("hyprland.start", function()
+    hl.exec_cmd(dockyrs)
+    hl.exec_cmd("@DIR@/target/release/dockyrs-notifyd")
+    hl.exec_cmd("@DIR@/restore-wallpaper.sh")
+end)
+
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd(dockyrs .. " --toggle-search"))
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd(dockyrs .. " --toggle-wallpaper"))
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd(dockyrs .. " --toggle-clipboard"))
+hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd(dockyrs .. " --toggle-dock-menu"))
+hl.bind("F8", hl.dsp.exec_cmd(dockyrs .. " --screenshot-region"))
+hl.bind("F9", hl.dsp.exec_cmd(dockyrs .. " --screenshot-full"))
+hl.bind(mainMod .. " + SHIFT + CTRL + 1", hl.dsp.exec_cmd(dockyrs .. " --test-notification"))
+hl.bind("F10", hl.dsp.exec_cmd("@DIR@/record-toggle.sh"), { locked = true })
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("@DIR@/relaunch.sh"))
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 1%+ && " .. dockyrs .. " --osd-volume"), { locked = true, repeating = true })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%- && " .. dockyrs .. " --osd-volume"), { locked = true, repeating = true })
+hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && " .. dockyrs .. " --osd-volume"), { locked = true, repeating = true })
+hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true, repeating = true })
+hl.bind("code:225", hl.dsp.exec_cmd("brightnessctl -n2 set 1%+ && " .. dockyrs .. " --osd-brightness"), { locked = true, repeating = true })
+hl.bind("code:224", hl.dsp.exec_cmd("brightnessctl -n2 set 1%- && " .. dockyrs .. " --osd-brightness"), { locked = true, repeating = true })
+
+hl.layer_rule({
+    name  = "dockyrs-blur",
+    match = { namespace = "^dockyrs(-menu)?$" },
+    blur         = true,
+    ignore_alpha = 0.0,
+})

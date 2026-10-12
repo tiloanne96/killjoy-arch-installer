@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# wallpaper-picker — abre el selector de wallpapers (hyprquickpaper).
+#
+# Uso: wallpaper-picker [settings]
+#   (sin argumentos)   abrir el selector
+#   settings           elegir el diseño del selector
+#
+# Se instala con: ./install.sh --wallpaper-picker
+
+set -euo pipefail
+
+HQP_DIR="${HQP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/dotfiles/hyprquickpaper}"
+
+if [[ ! -f $HQP_DIR/shell.qml ]]; then
+  echo "wallpaper-picker: no está instalado (ejecuta ./install.sh --wallpaper-picker)" >&2
+  exit 1
+fi
+
+case "${1:-}" in
+  "") exec qs -p "$HQP_DIR" ;;
+  settings) exec qs -p "$HQP_DIR/settings.qml" ;;
+  *)
+    echo "uso: wallpaper-picker [settings]" >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# yazi-float — abre yazi en Alacritty desde Hyprland.
+# Si el workspace está vacío, la ventana sale flotante y centrada; si ya hay
+# ventanas, se abre como una más del mosaico.
+#
+# Ejemplo de atajo en Hyprland:  bind = SUPER, E, exec, yazi-float
+
+set -euo pipefail
+
+for cmd in hyprctl alacritty yazi; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "yazi-float: falta $cmd" >&2
+    exit 1
+  }
+done
+
+# `hyprctl activeworkspace` imprime una línea "windows: N"
+windows="$(hyprctl activeworkspace | awk '/^[[:space:]]*windows:/ { print $2; exit }')"
+
+cmd="alacritty --class yazi-float --title yazi -e yazi"
+if [[ ${windows:-1} -eq 0 ]]; then
+  hyprctl dispatch exec "[float; center; size 1200 750] $cmd"
+else
+  hyprctl dispatch exec "$cmd"
+fi

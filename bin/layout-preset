@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# layout-preset — cambia al vuelo la distribución y los espacios de Hyprland.
+#
+# Uso: layout-preset code|read|reset
+#   code   mosaico dwindle con huecos pequeños (editor + terminal)
+#   read   layout master con márgenes amplios (lectura, un documento al centro)
+#   reset  vuelve a tu configuración (hyprctl reload)
+#
+# Son cambios temporales: no se guardan y desaparecen al recargar o reiniciar.
+# Ejemplo de atajo en Hyprland:  SUPER + ALT + 1 -> exec layout-preset code
+
+set -euo pipefail
+
+command -v hyprctl >/dev/null 2>&1 || {
+  echo "layout-preset: falta hyprctl" >&2
+  exit 1
+}
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 && notify-send -a layout-preset "Layout" "$1" 2>/dev/null || true
+  echo "$1"
+}
+
+# keyword <opción> <valor>: falla con un mensaje claro si Hyprland la rechaza
+keyword() {
+  local out
+  out="$(hyprctl keyword "$1" "$2" 2>&1)" || true
+  [[ $out == ok* ]] || {
+    echo "layout-preset: Hyprland rechazó $1=$2: $out" >&2
+    exit 1
+  }
+}
+
+case "${1:-}" in
+  code)
+    keyword general:layout dwindle
+    keyword general:gaps_in 3
+    keyword general:gaps_out 8
+    notify "Preset code: dwindle, huecos 3/8"
+    ;;
+  read)
+    keyword general:layout master
+    keyword general:gaps_in 10
+    keyword general:gaps_out 40
+    notify "Preset read: master, huecos 10/40"
+    ;;
+  reset)
+    hyprctl reload >/dev/null
+    notify "Layout restaurado desde tu configuración"
+    ;;
+  *)
+    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    exit 1
+    ;;
+esac

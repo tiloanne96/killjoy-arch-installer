@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# keys — lista los atajos que Hyprland tiene cargados ahora mismo.
+# Lee `hyprctl binds`, así que siempre refleja la configuración real, incluidos
+# los atajos que añadas tú. Con fzf puedes buscar escribiendo; con --print solo
+# imprime la lista.
+#
+# Ejemplo de atajo en Hyprland:  SUPER + F1 -> exec alacritty --class keys-float -e keys
+
+set -euo pipefail
+
+for cmd in hyprctl jq; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "keys: falta $cmd" >&2
+    exit 1
+  }
+done
+
+case "${1:-}" in
+  "" | --print) ;;
+  -h | --help)
+    sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  *)
+    echo "uso: keys [--print]" >&2
+    exit 1
+    ;;
+esac
+
+# modmask de Hyprland: SHIFT=1, CTRL=4, ALT=8, SUPER=64
+list="$(hyprctl binds -j | jq -r '
+  def bitset($m; $bit): (($m / $bit | floor) % 2) == 1;
+  .[]
+  | . as $b
+  | ([ (if bitset($b.modmask; 64) then "SUPER" else empty end),
+       (if bitset($b.modmask; 4)  then "CTRL"  else empty end),
+       (if bitset($b.modmask; 8)  then "ALT"   else empty end),
+       (if bitset($b.modmask; 1)  then "SHIFT" else empty end) ]
+     + [ (if $b.key != "" then $b.key else "code:\($b.keycode)" end) ]
+    | join(" + ")) as $combo
+  | [$combo,
+     (if ($b.description // "") != "" then $b.description
+      else ([$b.dispatcher, ($b.arg // "")] | map(select(. != "")) | join(" ")) end)]
+  | @tsv' | sort -u | column -t -s $'\t')"
+
+if [[ ${1:-} != --print ]] && command -v fzf >/dev/null 2>&1 && [[ -t 1 ]]; then
+  fzf --no-sort --prompt='atajo> ' <<<"$list" >/dev/null || true
+else
+  printf '%s\n' "$list"
+fi
