@@ -218,7 +218,7 @@ main() {
 
   fetch "$AMANE_URL" "$AMANE_REF" "$AMANE_DIR"
   fetch "$SUZUHA_URL" "$SUZUHA_REF" "$SUZUHA_DIR"
-  "$HERE/patch.sh" "$SUZUHA_DIR"
+  bash "$HERE/patch.sh" "$SUZUHA_DIR"
 
   if ((PATCH_ONLY)); then
     ok "Parches aplicados. Revísalos con: git -C $SUZUHA_DIR diff --stat"

@@ -214,7 +214,7 @@ main() {
   fi
 
   fetch_upstream
-  "$HERE/patch.sh" "$DOCKY_DIR"
+  bash "$HERE/patch.sh" "$DOCKY_DIR"
 
   if ((PATCH_ONLY)); then
     ok "Parches aplicados. Revísalos con: git -C $DOCKY_DIR diff --stat"

@@ -124,14 +124,14 @@ run_upstream() {
 
   prepare_alacritty
   info "Ejecutando el instalador de Lucid (${flags[*]})..."
-  "$LUCID_DIR/install.sh" "${flags[@]}"
+  bash "$LUCID_DIR/install.sh" "${flags[@]}"
 }
 
 uninstall() {
   [[ -x $LUCID_DIR/uninstall.sh ]] || fetch_upstream
   local flags=()
   ((ASSUME_YES)) && flags+=(--yes)
-  "$LUCID_DIR/uninstall.sh" "${flags[@]}"
+  bash "$LUCID_DIR/uninstall.sh" "${flags[@]}"
   # Alacritty vuelve a Catppuccin Mocha
   : >"$REPO_DIR/alacritty/dynamic.toml"
   ok "Alacritty de vuelta en Catppuccin Mocha"
@@ -149,7 +149,7 @@ main() {
   fi
 
   fetch_upstream
-  "$HERE/patch.sh" "$LUCID_DIR"
+  bash "$HERE/patch.sh" "$LUCID_DIR"
 
   if ((PATCH_ONLY)); then
     ok "Parches aplicados. Revísalos con: git -C $LUCID_DIR diff --stat"

@@ -88,12 +88,12 @@ run_installer() {
   ((ASSUME_YES)) && args+=(--yes)
   ((GREETER)) && args+=(--greeter)
   info "Ejecutando el instalador de bezel..."
-  "$BEZEL_DIR/install.sh" "${args[@]}"
+  bash "$BEZEL_DIR/install.sh" "${args[@]}"
 }
 
 uninstall() {
   [[ -x $BEZEL_DIR/uninstall.sh ]] || die "No encuentro $BEZEL_DIR/uninstall.sh; ¿está instalado?"
-  "$BEZEL_DIR/uninstall.sh"
+  bash "$BEZEL_DIR/uninstall.sh"
 }
 
 main() {
@@ -106,7 +106,7 @@ main() {
   fi
 
   fetch_upstream
-  "$HERE/patch.sh" "$BEZEL_DIR"
+  bash "$HERE/patch.sh" "$BEZEL_DIR"
 
   if ((PATCH_ONLY)); then
     ok "Parches aplicados. Revísalos con: git -C $BEZEL_DIR diff --stat"

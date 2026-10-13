@@ -134,7 +134,7 @@ run_installer() {
   if ((EXTRAS)); then args+=(--extras); fi
   if [[ -n $GITHUB_USER ]]; then args+=(--github "$GITHUB_USER"); fi
   info "Ejecutando el instalador original..."
-  "$DHRUV_DIR/quickshell/install.sh" "${args[@]}"
+  bash "$DHRUV_DIR/quickshell/install.sh" "${args[@]}"
 }
 
 # register_template <nombre> <entrada> <salida> [comando]: añade [templates.<nombre>]
@@ -228,7 +228,7 @@ main() {
   fi
 
   fetch_upstream
-  "$HERE/patch.sh" "$DHRUV_DIR"
+  bash "$HERE/patch.sh" "$DHRUV_DIR"
 
   if ((PATCH_ONLY)); then
     ok "Parches aplicados. Revísalos con: git -C $DHRUV_DIR diff --stat"

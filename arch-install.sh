@@ -290,7 +290,7 @@ validate_choices() {
   case $INSTALL_MODE in whole | dualboot) ;; *) die "--mode debe ser whole o dualboot (no $INSTALL_MODE)" ;; esac
   case $FILESYSTEM in btrfs | ext4) ;; *) die "--fs debe ser btrfs o ext4 (no $FILESYSTEM)" ;; esac
   case $KERNEL in linux | linux-zen | linux-lts | linux-hardened) ;; *) die "Kernel no admitido: $KERNEL (linux, linux-zen, linux-lts o linux-hardened)" ;; esac
-  [[ $DESKTOP_NAME == none || -x $REPO_DIR/desktops/$DESKTOP_NAME/install.sh ]] ||
+  [[ $DESKTOP_NAME == none || -f $REPO_DIR/desktops/$DESKTOP_NAME/install.sh ]] ||
     die "Escritorio desconocido: $DESKTOP_NAME"
   [[ -e /usr/share/zoneinfo/$TIMEZONE ]] || die "Zona horaria desconocida: $TIMEZONE"
   if [[ -n $DEV_LANGS && $DEV_LANGS != all ]]; then
@@ -579,6 +579,8 @@ copy_dotfiles() {
   info "Copiando los dotfiles a ~/.dotfiles"
   mkdir -p "$MNT/home/$USERNAME/.dotfiles"
   cp -a "$REPO_DIR/." "$MNT/home/$USERNAME/.dotfiles/"
+  # Si el repo pasó por un medio sin permisos (FAT, Windows, zip sin modos), se restauran
+  find "$MNT/home/$USERNAME/.dotfiles" -type f \( -name '*.sh' -o -path '*/bin/*' \) -exec chmod +x {} +
   arch-chroot "$MNT" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.dotfiles"
 }
 

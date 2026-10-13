@@ -174,7 +174,7 @@ check_desktop() {
   if ((WALLPAPERS)) && [[ $DESKTOP != dhruv ]]; then
     die "--wallpapers solo se puede usar con --desktop dhruv"
   fi
-  [[ -z $DESKTOP || -x $REPO_DIR/desktops/$DESKTOP/install.sh ]] && return
+  [[ -z $DESKTOP || -f $REPO_DIR/desktops/$DESKTOP/install.sh ]] && return
   die "Escritorio desconocido: $DESKTOP (disponibles: $(find "$REPO_DIR/desktops" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null))"
 }
 
@@ -187,7 +187,7 @@ install_desktop() {
   if ((WALLPAPERS)); then
     args+=(--wallpapers)
   fi
-  "$REPO_DIR/desktops/$DESKTOP/install.sh" "${args[@]}"
+  bash "$REPO_DIR/desktops/$DESKTOP/install.sh" "${args[@]}"
 }
 
 install_dev() {
@@ -196,7 +196,7 @@ install_dev() {
   if ((ASSUME_YES)); then
     args+=(--yes)
   fi
-  "$REPO_DIR/components/dev/install.sh" "${args[@]}"
+  bash "$REPO_DIR/components/dev/install.sh" "${args[@]}"
 }
 
 install_wallpaper_picker() {
@@ -205,7 +205,7 @@ install_wallpaper_picker() {
   if ((ASSUME_YES)); then
     args+=(--yes)
   fi
-  "$REPO_DIR/components/wallpaper-picker/install.sh" "${args[@]}"
+  bash "$REPO_DIR/components/wallpaper-picker/install.sh" "${args[@]}"
 }
 
 link_configs() {
@@ -221,6 +221,7 @@ link_configs() {
   # Scripts: un symlink por archivo en ~/.local/bin (ya está en el PATH de .bashrc)
   local script
   for script in "$REPO_DIR"/bin/*; do
+    [[ -x $script ]] || chmod +x "$script"
     link "$script" "$HOME/.local/bin/$(basename "$script")"
   done
 }

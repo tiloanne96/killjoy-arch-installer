@@ -33,7 +33,7 @@ done
 
 read -r -a args <"$PENDING"
 info "Terminando la instalación: install.sh ${args[*]}"
-if ! "$REPO_DIR/install.sh" "${args[@]}"; then
+if ! bash "$REPO_DIR/install.sh" "${args[@]}"; then
   warn "La instalación falló. Revisa el mensaje de arriba."
   warn "Se repetirá al volver a iniciar sesión, o ejecuta: $REPO_DIR/installer/first-login.sh"
   exit 1
