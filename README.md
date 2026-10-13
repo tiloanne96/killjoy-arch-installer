@@ -360,6 +360,11 @@ de which-key.
 | `ys` `ds` `cs` | Añadir / borrar / cambiar delimitadores (surround) |
 | `<leader>un` `ur` `us` `uw` `ud` | Alternar números, números relativos, ortografía, ajuste de línea, diagnósticos |
 
+> **Hyprland lo instala `install.sh`.** Con `--desktop bezel|dhruv|docky|lucid` se instala antes
+> `hyprland` (más `xdg-desktop-portal-hyprland`, `qt6-wayland` y `polkit`); suzuha instala Niri. En una
+> máquina virtual Hyprland necesita aceleración gráfica: en VirtualBox activa «Habilitar aceleración 3D»
+> con el controlador VMSVGA; en VMware, «Acelerar gráficos 3D»; en virt-manager, vídeo Virtio con 3D.
+
 ## Escritorio opcional: bezel (Hyprland + Quickshell)
 
 ```bash

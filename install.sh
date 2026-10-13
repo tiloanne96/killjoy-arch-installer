@@ -178,7 +178,23 @@ check_desktop() {
   die "Escritorio desconocido: $DESKTOP (disponibles: $(find "$REPO_DIR/desktops" -mindepth 1 -maxdepth 1 -type d -printf '%f ' 2>/dev/null))"
 }
 
+# El compositor lo da cada escritorio (suzuha instala Niri), salvo los que van sobre
+# Hyprland: sus instaladores traen el shell y la configuración, pero no Hyprland.
+# Sin él no hay sesión que iniciar (ni `hyprctl`) y la pantalla de login queda vacía.
+install_compositor() {
+  case $DESKTOP in
+    bezel | dhruv | docky | lucid) ;;
+    *) return 0 ;;
+  esac
+  info "Instalando Hyprland (compositor)..."
+  local flags=(--needed)
+  ((ASSUME_YES)) && flags+=(--noconfirm)
+  sudo pacman -Syu "${flags[@]}" hyprland xdg-desktop-portal-hyprland qt6-wayland polkit
+  ok "Hyprland instalado"
+}
+
 install_desktop() {
+  install_compositor
   info "Instalando el escritorio $DESKTOP..."
   local args=()
   if ((ASSUME_YES)); then

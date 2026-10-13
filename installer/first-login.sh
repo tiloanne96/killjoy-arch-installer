@@ -45,6 +45,13 @@ ok "Instalación terminada"
 # Con escritorio hay pantalla de inicio de sesión (greetd); se activa solo si
 # todo salió bien, para no dejar el equipo arrancando en algo roto.
 if pacman -Qq greetd >/dev/null 2>&1 && [[ -f /etc/greetd/config.toml ]]; then
+  # Sin ninguna sesión instalada, tuigreet dice «No command configured» y no deja entrar
+  if ! compgen -G '/usr/share/wayland-sessions/*.desktop' >/dev/null; then
+    warn "No hay ninguna sesión en /usr/share/wayland-sessions (¿falta el compositor?)."
+    warn "No activo la pantalla de login para no dejarte sin entrar. Instala el compositor"
+    warn "(hyprland o niri) y ejecuta: sudo systemctl enable greetd.service"
+    exit 1
+  fi
   sudo systemctl enable greetd.service && ok "Pantalla de inicio de sesión activada"
   echo "Reinicia para entrar al escritorio:  sudo reboot"
 fi
