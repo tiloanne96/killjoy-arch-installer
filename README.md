@@ -106,8 +106,8 @@ dotfiles/
 
 ## Instalar Arch completo desde el ISO
 
-`arch-install.sh` instala Arch desde cero. Arranca el ISO oficial (en UEFI),
-conéctate a internet (cable, o `iwctl` si es wifi) y:
+`arch-install.sh` instala Arch desde cero. Arranca el ISO oficial (en UEFI o en BIOS,
+se detecta solo), conéctate a internet (cable, o `iwctl` si es wifi) y:
 
 ```bash
 pacman -Sy git          # si el ISO no lo trae
@@ -149,8 +149,22 @@ Los valores por defecto están en `installer/defaults.conf`:
 disco (mínimo 30 GiB) para la raíz, reutiliza la partición EFI que ya exista
 (la de Windows, sin formatearla) y activa `os-prober` en GRUB. Antes tienes que
 dejar ese espacio libre desde Windows (Administración de discos → Reducir
-volumen); el script no redimensiona particiones ajenas. Si el disco usa MBR
-en lugar de GPT, se niega.
+volumen); el script no redimensiona particiones ajenas.
+
+**UEFI o BIOS**: el script mira si el ISO arrancó en UEFI (existe `/sys/firmware/efi`) y se
+adapta. Para comprobarlo tú: `ls /sys/firmware/efi` (si existe, UEFI; si no, BIOS).
+
+| | UEFI | BIOS (MBR) |
+|---|---|---|
+| Disco completo | EFI de 1 GiB + raíz (GPT) | una partición raíz (MBR, marcada de arranque); si el disco pasa de 2 TiB, GPT con una partición `bios_grub` de 1 MiB |
+| Dual-boot | reutiliza la EFI existente (GPT) | raíz como partición primaria en el espacio libre (MBR), o `bios_grub` + raíz si la tabla es GPT |
+| GRUB | `x86_64-efi` en `/efi` | `i386-pc` en el disco |
+
+En BIOS con dual-boot y tabla MBR, GRUB sustituye el código de arranque del MBR (el menú de GRUB
+llevará al otro sistema); la tabla MBR admite 4 particiones primarias, así que si ya hay 4 o el espacio
+libre está dentro de una partición extendida, el script se niega y lo explica. Si prefieres UEFI en una
+máquina virtual: VirtualBox → Sistema → «Habilitar EFI»; VMware → Firmware: UEFI; virt-manager →
+Firmware: UEFI.
 
 Instalación sin preguntas:
 
@@ -171,7 +185,7 @@ falla se repite al volver a entrar, y la pantalla de inicio de sesión (greetd +
 tuigreet) solo se activa cuando el escritorio se instaló bien, para no dejar el
 equipo arrancando en algo roto. En una laptop (batería detectada) añade `--laptop`.
 
-**Qué no hace todavía**: cifrado LUKS, soporte BIOS/MBR, hibernación (no hay swap
+**Qué no hace todavía**: cifrado LUKS, hibernación (no hay swap
 en disco), ni escritorio bspwm.
 
 ## Instalación sobre un Arch ya instalado
@@ -621,7 +635,7 @@ con Quickshell, Hyprland, niri ni matugen reales, y no he probado que
 `swaybg` pinte el fondo ni que el selector se abra.
 
 `arch-install.sh`: el particionado (modos whole y dualboot, con y sin partición EFI
-previa, disco MBR y falta de espacio), `mkfs`, los montajes (ext4), `genfstab`, la
+previa, disco MBR y falta de espacio; y en BIOS: disco completo con MBR y con GPT de más de 2 TiB, dual-boot con MBR y con GPT, y el rechazo con 4 primarias), `mkfs`, los montajes (ext4), `genfstab`, la
 creación del usuario, la contraseña y todo `chroot-setup.sh` se ejecutaron de verdad
 sobre un disco virtual, con un `pacstrap` simulado que copia un sistema base falso;
 las particiones de un Windows simulado quedaron idénticas. `grub-install`,
@@ -631,7 +645,9 @@ pruebas (el kernel no los trae), por lo que el camino btrfs, los subvolúmenes y
 `fstab` con la EFI no se ejecutaron. Los nombres de paquete (`greetd-tuigreet`,
 `nvidia-open-dkms`…), las opciones de `tuigreet` y que `os-prober` encuentre Windows
 desde el chroot sin pasos extra tampoco están comprobados. Pruébalo primero en una
-máquina virtual UEFI.
+máquina virtual, en UEFI o en BIOS. La instalación en BIOS (`grub-install --target=i386-pc`) se probó con
+`grub-install` simulado, así que no sé si un disco real arranca; algunos BIOS muy antiguos tampoco arrancan
+discos GPT, y por eso en BIOS el disco completo usa MBR siempre que cabe.
 
 `components/dev/install.sh` se ejecutó con `pacman`, `sudo`, `yay`, `rustup`, `npm`,
 `archlinux-java`, `pipx`, `systemctl` y `usermod` simulados (con y sin ayudante del AUR, con un paquete

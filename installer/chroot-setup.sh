@@ -3,13 +3,14 @@
 # arch-install.sh dentro de arch-chroot; no está pensado para usarse a mano.
 #
 # Variables esperadas: KERNEL KEYMAP TIMEZONE LOCALE EXTRA_LOCALES NEW_HOSTNAME
-# USERNAME INSTALL_MODE FILESYSTEM DESKTOP_NAME ROOT_LOCK (1 = bloquear root) PENDING_ARGS
+# USERNAME INSTALL_MODE FILESYSTEM DESKTOP_NAME ROOT_LOCK (1 = bloquear root)
+# BOOT_MODE (uefi o bios) GRUB_DISK (disco donde va GRUB en BIOS) PENDING_ARGS
 set -euo pipefail
 
 # shellcheck source=installer/ui.sh
 source "$(dirname "${BASH_SOURCE[0]}")/ui.sh"
 
-for v in KERNEL KEYMAP TIMEZONE LOCALE NEW_HOSTNAME USERNAME INSTALL_MODE FILESYSTEM DESKTOP_NAME ROOT_LOCK; do
+for v in KERNEL KEYMAP TIMEZONE LOCALE NEW_HOSTNAME USERNAME INSTALL_MODE FILESYSTEM DESKTOP_NAME ROOT_LOCK BOOT_MODE GRUB_DISK; do
   [[ -n ${!v:-} ]] || {
     echo "Falta la variable $v" >&2
     exit 1
@@ -78,8 +79,13 @@ if [[ $INSTALL_MODE == dualboot ]]; then
     echo 'GRUB_DISABLE_OS_PROBER=false' >>/etc/default/grub
   fi
 fi
-# Nunca --removable: pisaría BOOTX64.EFI, que puede ser el de Windows
-grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=Arch --recheck
+if [[ $BOOT_MODE == uefi ]]; then
+  # Nunca --removable: pisaría BOOTX64.EFI, que puede ser el de Windows
+  grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=Arch --recheck
+else
+  # BIOS: GRUB va al disco entero (MBR o hueco de incrustación), no a una partición
+  grub-install --target=i386-pc --recheck "$GRUB_DISK"
+fi
 grub-mkconfig -o /boot/grub/grub.cfg
 if [[ $INSTALL_MODE == dualboot ]] && ! grep -qi 'windows' /boot/grub/grub.cfg; then
   warn "GRUB no detectó otro sistema en este momento. Tras el primer arranque ejecuta:"

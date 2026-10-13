@@ -30,9 +30,10 @@
 #   -h, --help             mostrar esta ayuda
 #
 # Qué hace:
-#   1. Comprueba UEFI, internet y herramientas; sincroniza el reloj.
-#   2. Particiona: EFI + raíz (modo whole) o raíz en el espacio libre reutilizando
-#      la EFI existente (modo dualboot).
+#   1. Detecta si arrancaste en UEFI o en BIOS (MBR), y comprueba internet y herramientas.
+#   2. Particiona. UEFI: EFI + raíz (whole), o raíz en el espacio libre reutilizando
+#      la EFI existente (dualboot). BIOS: una sola partición raíz con tabla MBR (o GPT con
+#      partición bios_grub si el disco pasa de 2 TiB); GRUB va al MBR del disco.
 #   3. Formatea (btrfs con subvolúmenes @, @home, @log, @pkg, @snapshots, o ext4) y monta.
 #   4. pacstrap del sistema base con el kernel elegido, microcódigo y drivers de GPU.
 #   5. Configura idioma, teclado, usuario, zram, GRUB (con os-prober en dualboot)
@@ -66,6 +67,7 @@ CONFIRM_DISK=
 GPU_DRIVERS=1
 DRY_RUN=0
 LAPTOP=0
+BOOT_MODE=
 ESP_PART=
 ROOT_PART=
 FORMAT_ESP=1
@@ -306,13 +308,24 @@ validate_choices() {
   [[ $(lsblk -dno TYPE "$DISK") == disk ]] || die "$DISK no es un disco completo (¿pusiste una partición?)"
 }
 
+# UEFI si el ISO arrancó en UEFI (existe /sys/firmware/efi); si no, BIOS/MBR.
+# Para forzar UEFI en una máquina virtual: VirtualBox → Sistema → "Habilitar EFI";
+# VMware → Firmware: UEFI; virt-manager → Firmware: UEFI.
+detect_boot_mode() {
+  if [[ -d /sys/firmware/efi ]]; then BOOT_MODE=uefi; else BOOT_MODE=bios; fi
+}
+
 preflight() {
   [[ $EUID -eq 0 ]] || die "Ejecútalo como root desde el ISO de Arch."
-  [[ -d /sys/firmware/efi ]] || die "Este instalador solo admite UEFI y arrancaste en modo BIOS."
   local cmd
-  for cmd in sgdisk parted partprobe lsblk findmnt wipefs pacstrap genfstab arch-chroot mkfs.fat curl; do
+  for cmd in sgdisk parted partprobe lsblk findmnt wipefs pacstrap genfstab arch-chroot curl blockdev; do
     command -v "$cmd" >/dev/null || die "Falta el comando $cmd (¿estás en el ISO de Arch?)"
   done
+  if [[ $BOOT_MODE == uefi ]]; then
+    command -v mkfs.fat >/dev/null || die "Falta mkfs.fat"
+  else
+    warn "Arrancaste en modo BIOS (no UEFI): se instalará con arranque BIOS/MBR."
+  fi
   if [[ $FILESYSTEM == btrfs ]]; then
     command -v mkfs.btrfs >/dev/null || die "Falta mkfs.btrfs"
   else
@@ -341,15 +354,30 @@ free_part_number() {
   echo "$n"
 }
 
+MBR_LIMIT=2199023255552 # 2 TiB: lo máximo que direcciona una tabla MBR
+
 partition_whole() {
   info "Particionando $DISK (se borra todo)"
   wipefs -af "$DISK" >/dev/null
   sgdisk --zap-all "$DISK" >/dev/null
-  sgdisk -n "1:0:+${ESP_SIZE_MIB}M" -t 1:ef00 -c 1:EFI "$DISK" >/dev/null
-  sgdisk -n 2:0:0 -t 2:8300 -c 2:archroot "$DISK" >/dev/null
-  ESP_PART=$(part_path "$DISK" 1)
-  ROOT_PART=$(part_path "$DISK" 2)
-  FORMAT_ESP=1
+  FORMAT_ESP=0
+  ESP_PART=
+  if [[ $BOOT_MODE == uefi ]]; then
+    sgdisk -n "1:0:+${ESP_SIZE_MIB}M" -t 1:ef00 -c 1:EFI "$DISK" >/dev/null
+    sgdisk -n 2:0:0 -t 2:8300 -c 2:archroot "$DISK" >/dev/null
+    ESP_PART=$(part_path "$DISK" 1)
+    ROOT_PART=$(part_path "$DISK" 2)
+    FORMAT_ESP=1
+  elif (($(blockdev --getsize64 "$DISK") > MBR_LIMIT)); then
+    # BIOS con un disco de más de 2 TiB: GPT y una partición bios_grub para GRUB
+    sgdisk -n 1:0:+1M -t 1:ef02 -c 1:biosgrub "$DISK" >/dev/null
+    sgdisk -n 2:0:0 -t 2:8300 -c 2:archroot "$DISK" >/dev/null
+    ROOT_PART=$(part_path "$DISK" 2)
+  else
+    # BIOS: MBR clásico con una sola partición raíz marcada como de arranque
+    parted -s "$DISK" mklabel msdos mkpart primary 1MiB 100% set 1 boot on
+    ROOT_PART=$(part_path "$DISK" 1)
+  fi
 }
 
 # Tamaño (MiB) del mayor bloque de espacio libre del disco
@@ -358,30 +386,80 @@ largest_free_mib() {
     awk -F: '$5 ~ /^free/ { gsub(/[^0-9.]/, "", $4); if ($4 + 0 > max) max = $4 + 0 } END { printf "%d\n", max }'
 }
 
+# Números de partición de una tabla (GPT o MBR), uno por línea
+parted_numbers() { parted -m -s "$1" print 2>/dev/null | awk -F: '$1 ~ /^[0-9]+$/ { print $1 }'; }
+
+# Dual-boot con tabla MBR (BIOS): la raíz va en el mayor espacio libre como
+# partición primaria. GRUB sustituye el código de arranque del MBR y luego
+# os-prober añade el otro sistema al menú.
+partition_dualboot_mbr() {
+  local start end before after n
+  read -r start end < <(parted -m -s "$DISK" unit MiB print free 2>/dev/null |
+    awk -F: '$5 ~ /^free/ { gsub(/MiB/, "", $2); gsub(/MiB/, "", $3); sz = $4; gsub(/[^0-9.]/, "", sz)
+      if (sz + 0 > max) { max = sz + 0; s = $2 + 0; e = $3 + 0 } }
+      # parted toma el final como último MiB incluido, de ahí el e - 1
+      END { s = (s == int(s)) ? s : int(s) + 1; if (s < 1) s = 1; printf "%d %d\n", s, e - 1 }')
+  before=$(parted_numbers "$DISK")
+  info "Creo la raíz como partición primaria entre ${start} MiB y ${end} MiB"
+  parted -s "$DISK" mkpart primary "${start}MiB" "${end}MiB" ||
+    die "parted no pudo crear la partición (¿ya hay 4 primarias, o el espacio libre está dentro de una partición extendida?)"
+  after=$(parted_numbers "$DISK")
+  n=$(comm -13 <(sort <<<"$before") <(sort <<<"$after") | head -n1)
+  [[ -n $n ]] || die "No encontré la partición recién creada en $DISK"
+  ROOT_PART=$(part_path "$DISK" "$n")
+  FORMAT_ESP=0
+  ESP_PART=
+  warn "GRUB reemplazará el código de arranque del MBR de $DISK; os-prober añadirá el otro sistema al menú."
+}
+
 partition_dualboot() {
-  [[ $(blkid -p -o value -s PTTYPE "$DISK" 2>/dev/null || true) == gpt ]] ||
-    die "$DISK no tiene tabla GPT; el modo dualboot solo admite GPT/UEFI."
-  local free_mib esp_num root_num
+  local pttype free_mib esp_num root_num
+  pttype=$(blkid -p -o value -s PTTYPE "$DISK" 2>/dev/null || true)
+  if [[ $BOOT_MODE == uefi ]]; then
+    [[ $pttype == gpt ]] || die "$DISK no tiene tabla GPT; en UEFI el modo dualboot solo admite GPT."
+  else
+    [[ $pttype == gpt || $pttype == dos ]] || die "$DISK no tiene tabla de particiones GPT ni MBR."
+  fi
   free_mib=$(largest_free_mib "$DISK")
   info "Mayor bloque de espacio libre en $DISK: $((free_mib / 1024)) GiB"
   ((free_mib >= MIN_ROOT_GIB * 1024)) ||
     die "No hay $MIN_ROOT_GIB GiB libres seguidos en $DISK. Reduce una partición desde el otro sistema (Windows: Administración de discos) y repite."
 
-  esp_num=$(sgdisk -p "$DISK" | awk '$6 == "EF00" { print $1; exit }')
-  if [[ -n $esp_num ]]; then
-    ESP_PART=$(part_path "$DISK" "$esp_num")
-    [[ $(blkid -o value -s TYPE "$ESP_PART" 2>/dev/null || true) == vfat ]] ||
-      die "La partición EFI $ESP_PART no es FAT32; no la toco."
-    FORMAT_ESP=0
-    ok "Reutilizo la partición EFI existente: $ESP_PART (no se formatea)"
+  if [[ $pttype == dos ]]; then
+    partition_dualboot_mbr
+    return
+  fi
+
+  if [[ $BOOT_MODE == uefi ]]; then
+    esp_num=$(sgdisk -p "$DISK" | awk '$6 == "EF00" { print $1; exit }')
+    if [[ -n $esp_num ]]; then
+      ESP_PART=$(part_path "$DISK" "$esp_num")
+      [[ $(blkid -o value -s TYPE "$ESP_PART" 2>/dev/null || true) == vfat ]] ||
+        die "La partición EFI $ESP_PART no es FAT32; no la toco."
+      FORMAT_ESP=0
+      ok "Reutilizo la partición EFI existente: $ESP_PART (no se formatea)"
+    else
+      info "No hay partición EFI; creo una de ${ESP_SIZE_MIB} MiB"
+      esp_num=$(free_part_number "$DISK")
+      sgdisk -n "$esp_num:0:+${ESP_SIZE_MIB}M" "$DISK" >/dev/null
+      sgdisk -t "$esp_num:ef00" "$DISK" >/dev/null
+      sgdisk -c "$esp_num:EFI" "$DISK" >/dev/null
+      ESP_PART=$(part_path "$DISK" "$esp_num")
+      FORMAT_ESP=1
+    fi
   else
-    info "No hay partición EFI; creo una de ${ESP_SIZE_MIB} MiB"
-    esp_num=$(free_part_number "$DISK")
-    sgdisk -n "$esp_num:0:+${ESP_SIZE_MIB}M" "$DISK" >/dev/null
-    sgdisk -t "$esp_num:ef00" "$DISK" >/dev/null
-    sgdisk -c "$esp_num:EFI" "$DISK" >/dev/null
-    ESP_PART=$(part_path "$DISK" "$esp_num")
-    FORMAT_ESP=1
+    # BIOS con GPT: GRUB necesita una partición bios_grub (tipo EF02) donde incrustarse
+    ESP_PART=
+    FORMAT_ESP=0
+    if [[ -n $(sgdisk -p "$DISK" | awk '$6 == "EF02" { print $1; exit }') ]]; then
+      ok "Ya existe una partición bios_grub; la reutilizo"
+    else
+      info "Creo una partición bios_grub de 1 MiB para GRUB"
+      esp_num=$(free_part_number "$DISK")
+      sgdisk -n "$esp_num:0:+1M" "$DISK" >/dev/null
+      sgdisk -t "$esp_num:ef02" "$DISK" >/dev/null
+      sgdisk -c "$esp_num:biosgrub" "$DISK" >/dev/null
+    fi
   fi
 
   root_num=$(free_part_number "$DISK")
@@ -401,17 +479,17 @@ partition_disk() {
   udevadm settle 2>/dev/null || true
   local i
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    [[ -b $ROOT_PART && -b $ESP_PART ]] && return 0
+    [[ -b $ROOT_PART && ( -z $ESP_PART || -b $ESP_PART ) ]] && return 0
     sleep 1
   done
-  die "El kernel no creó $ROOT_PART / $ESP_PART tras particionar."
+  die "El kernel no creó ${ROOT_PART} ${ESP_PART} tras particionar."
 }
 
 # ------------------------------------------------------- formato y montaje
 
 format_and_mount() {
   info "Formateando y montando"
-  if ((FORMAT_ESP)); then
+  if ((FORMAT_ESP)) && [[ -n $ESP_PART ]]; then
     mkfs.fat -F 32 -n EFI "$ESP_PART" >/dev/null
   fi
 
@@ -437,9 +515,13 @@ format_and_mount() {
 
   # La EFI va en /efi y los kernels en /boot (dentro de la raíz): así una EFI
   # pequeña, como la de Windows, no se llena con kernels e initramfs.
-  mkdir -p "$MNT/efi"
-  mount "$ESP_PART" "$MNT/efi"
-  ok "Raíz ($FILESYSTEM) en $ROOT_PART, EFI en $ESP_PART"
+  if [[ $BOOT_MODE == uefi ]]; then
+    mkdir -p "$MNT/efi"
+    mount "$ESP_PART" "$MNT/efi"
+    ok "Raíz ($FILESYSTEM) en $ROOT_PART, EFI en $ESP_PART"
+  else
+    ok "Raíz ($FILESYSTEM) en $ROOT_PART (arranque BIOS: sin partición EFI)"
+  fi
 }
 
 # ------------------------------------------------------------------ sistema
@@ -477,10 +559,11 @@ install_base() {
   info "Instalando el sistema base (pacstrap)"
   local pkgs=(
     base base-devel "$KERNEL" "${KERNEL}-headers" linux-firmware
-    grub efibootmgr os-prober networkmanager sudo
+    grub os-prober networkmanager sudo
     git neovim man-db man-pages bash-completion zram-generator
     pipewire pipewire-alsa pipewire-pulse wireplumber
   )
+  [[ $BOOT_MODE != uefi ]] || pkgs+=(efibootmgr)
   [[ -z $UCODE ]] || pkgs+=("$UCODE")
   [[ $FILESYSTEM != btrfs ]] || pkgs+=(btrfs-progs)
   [[ $INSTALL_MODE != dualboot ]] || pkgs+=(ntfs-3g)
@@ -516,6 +599,7 @@ configure_system() {
     KERNEL="$KERNEL" KEYMAP="$KEYMAP" TIMEZONE="$TIMEZONE" LOCALE="$LOCALE" \
     EXTRA_LOCALES="$EXTRA_LOCALES" NEW_HOSTNAME="$NEW_HOSTNAME" USERNAME="$USERNAME" \
     INSTALL_MODE="$INSTALL_MODE" FILESYSTEM="$FILESYSTEM" DESKTOP_NAME="$DESKTOP_NAME" \
+    BOOT_MODE="$BOOT_MODE" GRUB_DISK="$DISK" \
     PENDING_ARGS="$(pending_args)" ROOT_LOCK="$([[ $ROOT_MODE == lock ]] && echo 1 || echo 0)" \
     /root/chroot-setup.sh
   rm -f "$MNT/root/chroot-setup.sh" "$MNT/root/ui.sh"
@@ -535,7 +619,7 @@ summary() {
   local root_txt="con contraseña"
   [[ $ROOT_MODE != lock ]] || root_txt="bloqueado, se usa sudo"
   heading "Resumen de la instalación"
-  printf '  %s%s%s %s (%s)\n' "$C_DIM" "Disco        " "$C_RESET" "$DISK" "$INSTALL_MODE"
+  printf '  %s%s%s %s (%s)  ·  Arranque: %s\n' "$C_DIM" "Disco        " "$C_RESET" "$DISK" "$INSTALL_MODE" "${BOOT_MODE^^}"
   printf '  %s%s%s %s  ·  Kernel: %s  ·  Teclado: %s\n' "$C_DIM" "Raíz         " "$C_RESET" "$FILESYSTEM" "$KERNEL" "$KEYMAP"
   printf '  %s%s%s %s  ·  Usuario: %s (con sudo)\n' "$C_DIM" "Equipo       " "$C_RESET" "$NEW_HOSTNAME" "$USERNAME"
   printf '  %s%s%s %s\n' "$C_DIM" "Root         " "$C_RESET" "$root_txt"
@@ -624,6 +708,7 @@ banner() {
 
 main() {
   parse_args "$@"
+  detect_boot_mode
   banner
   ((DRY_RUN)) || preflight
   ask_username
