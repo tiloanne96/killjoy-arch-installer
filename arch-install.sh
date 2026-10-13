@@ -553,6 +553,28 @@ detect_hardware() {
   if compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
     LAPTOP=1
   fi
+
+  # Herramientas de invitado si esto es una máquina virtual: ajustan la resolución
+  # al tamaño de la ventana y comparten el portapapeles
+  GUEST_PKGS=()
+  GUEST_SERVICES=
+  case $(systemd-detect-virt 2>/dev/null || true) in
+    oracle)
+      GUEST_PKGS=(virtualbox-guest-utils)
+      GUEST_SERVICES="vboxservice.service"
+      ;;
+    vmware)
+      GUEST_PKGS=(open-vm-tools)
+      GUEST_SERVICES="vmtoolsd.service vmware-vmblock-fuse.service"
+      ;;
+    kvm | qemu)
+      GUEST_PKGS=(qemu-guest-agent spice-vdagent)
+      GUEST_SERVICES="qemu-guest-agent.service"
+      ;;
+  esac
+  if ((${#GUEST_PKGS[@]})); then
+    info "Máquina virtual detectada: añado ${GUEST_PKGS[*]}"
+  fi
 }
 
 install_base() {
@@ -568,7 +590,7 @@ install_base() {
   [[ $FILESYSTEM != btrfs ]] || pkgs+=(btrfs-progs)
   [[ $INSTALL_MODE != dualboot ]] || pkgs+=(ntfs-3g)
   [[ $DESKTOP_NAME == none ]] || pkgs+=(greetd greetd-tuigreet)
-  pkgs+=("${GPU_PKGS[@]}")
+  pkgs+=("${GPU_PKGS[@]}" "${GUEST_PKGS[@]}")
 
   pacstrap -K "$MNT" "${pkgs[@]}"
   genfstab -U "$MNT" >>"$MNT/etc/fstab"
@@ -601,7 +623,7 @@ configure_system() {
     KERNEL="$KERNEL" KEYMAP="$KEYMAP" TIMEZONE="$TIMEZONE" LOCALE="$LOCALE" \
     EXTRA_LOCALES="$EXTRA_LOCALES" NEW_HOSTNAME="$NEW_HOSTNAME" USERNAME="$USERNAME" \
     INSTALL_MODE="$INSTALL_MODE" FILESYSTEM="$FILESYSTEM" DESKTOP_NAME="$DESKTOP_NAME" \
-    BOOT_MODE="$BOOT_MODE" GRUB_DISK="$DISK" \
+    BOOT_MODE="$BOOT_MODE" GRUB_DISK="$DISK" GUEST_SERVICES="$GUEST_SERVICES" \
     PENDING_ARGS="$(pending_args)" ROOT_LOCK="$([[ $ROOT_MODE == lock ]] && echo 1 || echo 0)" \
     /root/chroot-setup.sh
   rm -f "$MNT/root/chroot-setup.sh" "$MNT/root/ui.sh"

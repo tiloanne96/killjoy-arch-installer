@@ -60,6 +60,9 @@ replace "$TARGET/lib/common.sh" ' quickshell/ kitty/ gtk-3.0/' ' quickshell/ gtk
 replace "$TARGET/lib/common.sh" 'Quickshell shell, kitty, GTK/Qt theme' 'Quickshell shell, GTK/Qt theme (Alacritty as terminal)'
 rm -rf "$CFG/kitty"
 
+# localectl imprime «(unset)» si el sistema no tiene distribución X11; Hyprland lo rechaza
+replace "$TARGET/install.sh" $'kb_variant=$(localectl status 2>/dev/null | awk -F\': \' \'/X11 Variant/ {print $2}\' | cut -d, -f1)\n' $'kb_variant=$(localectl status 2>/dev/null | awk -F\': \' \'/X11 Variant/ {print $2}\' | cut -d, -f1)\n[ "$kb_layout" = "(unset)" ] && kb_layout=us\n[ "$kb_variant" = "(unset)" ] && kb_variant=\n'
+
 echo "Parche 2/2: paleta Catppuccin Mocha"
 grep -rIlZE '#[0-9a-fA-F]{6}|rgba?\(' "$CFG" | xargs -0 perl "$HERE/recolor.pl" "$HERE/palette.map"
 

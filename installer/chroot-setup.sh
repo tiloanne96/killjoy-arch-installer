@@ -18,6 +18,7 @@ for v in KERNEL KEYMAP TIMEZONE LOCALE NEW_HOSTNAME USERNAME INSTALL_MODE FILESY
 done
 EXTRA_LOCALES=${EXTRA_LOCALES:-}
 PENDING_ARGS=${PENDING_ARGS:-}
+GUEST_SERVICES=${GUEST_SERVICES:-}
 
 info "Zona horaria y reloj"
 [[ -e /usr/share/zoneinfo/$TIMEZONE ]] || {
@@ -36,6 +37,21 @@ done
 locale-gen
 echo "LANG=$LOCALE" >/etc/locale.conf
 echo "KEYMAP=$KEYMAP" >/etc/vconsole.conf
+# Distribución para Wayland/X11: sin esto `localectl` dice «(unset)» y los escritorios
+# (Hyprland) se quejan de «Invalid keyboard layout». Del nombre de la consola se saca el de X.
+case $KEYMAP in
+  la-latin1) X_LAYOUT=latam ;;
+  uk) X_LAYOUT=gb ;;
+  *) X_LAYOUT=${KEYMAP%%-*} ;;
+esac
+install -d /etc/X11/xorg.conf.d
+cat >/etc/X11/xorg.conf.d/00-keyboard.conf <<XKB
+Section "InputClass"
+    Identifier "system-keyboard"
+    MatchIsKeyboard "on"
+    Option "XkbLayout" "$X_LAYOUT"
+EndSection
+XKB
 
 info "Nombre del equipo"
 echo "$NEW_HOSTNAME" >/etc/hostname
@@ -69,6 +85,10 @@ ZRAM
 
 info "Servicios"
 systemctl enable NetworkManager.service systemd-timesyncd.service fstrim.timer
+# Servicios de las herramientas de máquina virtual (si arch-install.sh las instaló)
+for unit in ${GUEST_SERVICES:-}; do
+  systemctl enable "$unit" || warn "No se pudo activar $unit"
+done
 
 info "Gestor de arranque (GRUB)"
 if [[ $INSTALL_MODE == dualboot ]]; then
