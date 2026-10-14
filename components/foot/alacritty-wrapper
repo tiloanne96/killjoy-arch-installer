@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# alacritty-wrapper — hace que `alacritty` abra foot.
+#
+# Lo instala install.sh como /usr/local/bin/alacritty. Los escritorios de este repo
+# lanzan `alacritty` por nombre (atajos, barra, lanzador); así la terminal pasa a ser
+# foot sin tocar ninguno de ellos. foot dibuja por CPU, por lo que además funciona en
+# máquinas virtuales, donde Alacritty y kitty no abren (necesitan OpenGL y Hyprland
+# rechaza el búfer de la VM: «invalid arguments for wl_surface#N.attach»).
+#
+# Traduce las opciones de Alacritty que usan esos escritorios:
+#   --class X[,Y]       → --app-id X (por defecto Alacritty, para que las reglas de
+#                         ventana que buscan esa clase sigan funcionando)
+#   -T/--title T        → --title T
+#   --working-directory → --working-directory
+#   -e COMANDO...       → COMANDO... (foot recibe el comando al final)
+# Para volver a Alacritty de verdad:  sudo rm /usr/local/bin/alacritty
+set -u
+
+app_id=Alacritty
+opts=()
+cmd=()
+
+# `alacritty msg create-window` (abrir otra ventana) equivale a lanzar foot
+if [[ ${1:-} == msg ]]; then
+  exec foot --app-id "$app_id"
+fi
+
+while (($# > 0)); do
+  case $1 in
+    --class)
+      app_id=${2:-Alacritty}
+      app_id=${app_id%%,*}
+      shift 2 || break
+      ;;
+    --class=*)
+      app_id=${1#*=}
+      app_id=${app_id%%,*}
+      shift
+      ;;
+    -T | --title)
+      opts+=(--title "${2:-}")
+      shift 2 || break
+      ;;
+    --working-directory)
+      opts+=(--working-directory "${2:-}")
+      shift 2 || break
+      ;;
+    -o | --option | --config-file)
+      shift 2 || break # opciones de Alacritty sin equivalente directo
+      ;;
+    -e | --command)
+      shift
+      cmd=("$@")
+      break
+      ;;
+    *) shift ;;
+  esac
+done
+
+exec foot --app-id "$app_id" "${opts[@]}" "${cmd[@]}"

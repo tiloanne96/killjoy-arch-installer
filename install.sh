@@ -10,14 +10,18 @@
 #   --wallpaper-picker instalar un selector de wallpapers (no con dhruv, docky, lucid ni suzuha)
 #   --dev LISTA        entornos y servicios: go, rust, ruby, node, java, python, mobile, docker, redis o all
 #   --laptop           instalar TLP (ahorro de energía) y brightnessctl
+#   --no-foot          usar Alacritty en lugar de foot (foot es la terminal por defecto)
 #   -h, --help         mostrar esta ayuda
 #
 # Qué hace:
 #   1. Sincroniza e instala los paquetes necesarios con pacman. Usa -Syu porque
 #      en Arch instalar sin actualizar antes puede causar actualizaciones parciales.
 #   2. Clona Oh My Bash en ~/.oh-my-bash (si no existe).
-#   3. Con --desktop, instala el escritorio elegido (desktops/<nombre>/).
+#   3. Con --desktop, instala el escritorio elegido (desktops/<nombre>/) y deja sus fondos
+#      por defecto (wallpapers/) en ~/Pictures/Wallpapers y ~/Pictures/wallpapers.
 #   4. Con --laptop, instala y activa TLP.
+#   La terminal es foot: se instala y `alacritty` (que usan los atajos y lanzadores de
+#   todos los escritorios) pasa a abrir foot; ver components/foot/.
 #   5. Con --wallpaper-picker, instala el selector de wallpapers.
 #   6. Enlaza la configuración y los scripts de bin/ (en ~/.local/bin) con
 #      symlinks; lo que ya exista se respalda en ~/.dotfiles-backup/<fecha>/.
@@ -38,12 +42,13 @@ WALLPAPERS=0
 WALLPAPER_PICKER=0
 DESKTOP=
 DEV_LANGS=
+FOOT=1
 
 PACKAGES=(
   # Base
   git base-devel curl unzip
   # Editor, terminal y fuente
-  neovim alacritty ttf-jetbrains-mono-nerd
+  neovim ttf-jetbrains-mono-nerd
   # Herramientas que usa la configuración
   ripgrep fd fzf bat eza zoxide tree-sitter-cli shellcheck lazygit
   # Formateadores (conform.nvim)
@@ -56,6 +61,8 @@ PACKAGES=(
   tmux yazi lm_sensors
   # Scripts de bin/: capturas y grabación de pantalla en Wayland
   grim slurp wf-recorder libnotify jq
+  # Navegadores: Firefox y Firefox Developer Edition (perfiles y comandos distintos)
+  firefox firefox-developer-edition
 )
 
 info() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
@@ -78,6 +85,7 @@ parse_args() {
       --no-packages) INSTALL_PACKAGES=0 ;;
       --no-omb) INSTALL_OMB=0 ;;
       --laptop) LAPTOP=1 ;;
+      --no-foot) FOOT=0 ;;
       --wallpapers) WALLPAPERS=1 ;;
       --wallpaper-picker) WALLPAPER_PICKER=1 ;;
       --dev)
@@ -111,7 +119,9 @@ install_packages() {
   if ((ASSUME_YES)); then
     flags+=(--noconfirm)
   fi
-  sudo pacman -Syu "${flags[@]}" "${PACKAGES[@]}"
+  local terminal=foot
+  ((FOOT)) || terminal=alacritty
+  sudo pacman -Syu "${flags[@]}" "${PACKAGES[@]}" "$terminal"
   fc-cache -f >/dev/null 2>&1 || true
   ok "Paquetes instalados"
 }
@@ -206,6 +216,24 @@ install_desktop() {
   bash "$REPO_DIR/desktops/$DESKTOP/install.sh" "${args[@]}"
 }
 
+# Fondos por defecto: wallpapers/<escritorio>.jpg es el de cada escritorio (suzuha no tiene uno
+# propio) y wallpapers/killjoy.png, de este repo, queda para todos como alternativa. Se copian a
+# ~/Pictures/Wallpapers y ~/Pictures/wallpapers. Bezel toma la primera imagen de la carpeta en
+# el primer inicio de sesión (bezel.jpg va antes que killjoy.png, así que usa el suyo); en los
+# demás escritorios aparecen en su selector de wallpapers.
+install_default_wallpaper() {
+  local dir file
+  local files=("$REPO_DIR/wallpapers/killjoy.png")
+  [[ ! -f $REPO_DIR/wallpapers/$DESKTOP.jpg ]] || files+=("$REPO_DIR/wallpapers/$DESKTOP.jpg")
+  for dir in "$HOME/Pictures/Wallpapers" "$HOME/Pictures/wallpapers"; do
+    mkdir -p "$dir"
+    for file in "${files[@]}"; do
+      [[ -f $file ]] && cp -f "$file" "$dir/"
+    done
+  done
+  ok "Fondos por defecto en ~/Pictures/Wallpapers y ~/Pictures/wallpapers"
+}
+
 install_dev() {
   info "Instalando entornos de desarrollo ($DEV_LANGS)..."
   local args=(--lang "$DEV_LANGS")
@@ -242,6 +270,21 @@ link_configs() {
   done
 }
 
+# La terminal es foot. Los atajos, la barra y el lanzador de los cinco escritorios llaman a
+# `alacritty` por nombre; en vez de reparchear cada uno, `alacritty` pasa a ser un script
+# que abre foot (components/foot/alacritty-wrapper). foot dibuja por CPU, así que además
+# funciona en máquinas virtuales, donde Alacritty y kitty no abren (necesitan OpenGL y
+# Hyprland rechaza su búfer). Con --no-foot se queda Alacritty.
+setup_foot() {
+  ((FOOT)) || return 0
+  info "Configurando foot como terminal..."
+  # con --no-packages la lista principal no se instaló
+  command -v foot >/dev/null 2>&1 || sudo pacman -S --needed foot
+  link "$REPO_DIR/components/foot" "$HOME/.config/foot"
+  sudo install -m 755 "$REPO_DIR/components/foot/alacritty-wrapper" /usr/local/bin/alacritty
+  ok "\`alacritty\` ahora abre foot (para volver a Alacritty: sudo rm /usr/local/bin/alacritty)"
+}
+
 main() {
   parse_args "$@"
   check_system
@@ -250,6 +293,7 @@ main() {
   ((INSTALL_PACKAGES)) && install_packages
   ((INSTALL_OMB)) && install_omb
   if [[ -n $DESKTOP ]]; then
+    install_default_wallpaper
     install_desktop
   fi
   if ((LAPTOP)); then
@@ -262,11 +306,12 @@ main() {
     install_dev
   fi
   link_configs
+  setup_foot
 
   cat <<'EOF'
 
 Listo. Siguientes pasos:
-  1. Abre una terminal nueva (idealmente Alacritty) para cargar Oh My Bash.
+  1. Abre una terminal nueva (foot) para cargar Oh My Bash.
   2. Ejecuta `nvim`: lazy.nvim instalará los plugins y Mason los servidores LSP.
   3. Revisa que todo esté bien con :checkhealth dentro de Neovim.
 EOF

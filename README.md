@@ -365,6 +365,27 @@ de which-key.
 > máquina virtual Hyprland necesita aceleración gráfica: en VirtualBox activa «Habilitar aceleración 3D»
 > con el controlador VMSVGA; en VMware, «Acelerar gráficos 3D»; en virt-manager, vídeo Virtio con 3D.
 
+> **La terminal es foot.** `install.sh` instala foot (Catppuccin Mocha y JetBrains Mono Nerd, en
+> `components/foot/`) y pone `/usr/local/bin/alacritty`, un script que abre foot traduciendo las opciones de
+> Alacritty. Los atajos, la barra y el lanzador de los cinco escritorios llaman a `alacritty` por nombre, así
+> que pasan a abrir foot sin tocarlos. foot dibuja por CPU y funciona en máquinas virtuales, donde Alacritty
+> y kitty no abren (necesitan OpenGL y Hyprland rechaza su búfer: `wl_surface#N.attach: invalid arguments`).
+> `--no-foot` deja Alacritty; para volver a él después: `sudo rm /usr/local/bin/alacritty` e instalar
+> `alacritty`. Con foot no siguen los colores del wallpaper (lucid y dhruv, que escriben el tema de Alacritty).
+> No se ha probado en una VM ni en una máquina real.
+
+> **Navegadores.** `install.sh` instala `firefox` y `firefox-developer-edition` (ambos del repositorio oficial `extra`;
+> se abren con `firefox` y `firefox-developer-edition`, cada uno con su perfil).
+
+> **Fondos por defecto.** `wallpapers/` trae un fondo por escritorio (`bezel.jpg`, `dhruv.jpg`, `docky.jpg`,
+> `lucid.jpg`; suzuha no tiene uno propio) y `killjoy.png`, un diseño de este repo (amarillo sobre oscuro) para
+> todos. Con `--desktop`, `install.sh` copia a `~/Pictures/Wallpapers` y `~/Pictures/wallpapers` el del escritorio
+> elegido y `killjoy.png`. Bezel usa el suyo solo en el primer inicio de sesión (toma la primera imagen de la
+> carpeta); en los demás aparecen en su selector de wallpapers y se eligen ahí. `docky.jpg` es pequeño (736×338)
+> y se verá borroso a pantalla completa. Las imágenes de los cuatro escritorios no son de este repo: antes de
+> publicarlo, comprueba que puedes redistribuirlas. **Hidamari** (fondos de vídeo) no se incluye: su README solo
+> declara soporte para GNOME en Wayland y X11, no para Hyprland ni Niri.
+
 ## Escritorio opcional: bezel (Hyprland + Quickshell)
 
 ```bash

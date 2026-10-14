@@ -210,7 +210,7 @@ choose_desktop() {
   for i in "${!opts[@]}"; do
     item "$((i + 1))" "${opts[i]}"
   done
-  echo "${C_DIM}  none = solo terminal con Neovim, Alacritty y Oh My Bash${C_RESET}"
+  echo "${C_DIM}  none = solo terminal con Neovim, foot y Oh My Bash${C_RESET}"
   local n
   read -r -p "${PROMPT}Escritorio [1-${#opts[@]}] [1]: " n || die "Falta el escritorio (usa --desktop)"
   n=${n:-1}
